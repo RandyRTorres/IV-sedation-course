@@ -69,6 +69,13 @@
             android:name=".ReplyReceiver"
             android:exported="false" />
 
+        <!-- Serves the outgoing MMS PDU file to the platform MMS service -->
+        <provider
+            android:name=".MmsFileProvider"
+            android:authorities="com.textoverlay.assistant.mms"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
         <!-- Receives incoming SMS once we are the default SMS app.
              Required (with BROADCAST_SMS) to be eligible as the default app. -->
         <receiver

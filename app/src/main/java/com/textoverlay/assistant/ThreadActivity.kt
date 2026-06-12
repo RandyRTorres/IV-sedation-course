@@ -2,15 +2,23 @@ package com.textoverlay.assistant
 
 import android.content.Intent
 import android.database.ContentObserver
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.Telephony
+import android.view.Gravity
 import android.view.View
+import android.widget.BaseAdapter
+import android.widget.GridView
+import android.widget.PopupWindow
+import android.widget.TextView
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.textoverlay.assistant.databinding.ActivityThreadBinding
@@ -27,6 +35,40 @@ class ThreadActivity : AppCompatActivity() {
     private var threadId: Long = -1L
     private var address: String? = null
     private var autoSummaryChecked = false
+
+    /** A photo/GIF the user picked but hasn't sent yet. */
+    private var pendingAttachment: Uri? = null
+
+    /** Photo/GIF picker (modern Android photo picker). */
+    private val pickMedia = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri -> uri?.let { setAttachment(it) } }
+
+    /** Contact picker for sharing a contact into the message body. */
+    private val pickContactShare = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == android.app.Activity.RESULT_OK) {
+            res.data?.data?.let { uri ->
+                runCatching {
+                    contentResolver.query(
+                        uri,
+                        arrayOf(
+                            ContactsContract.CommonDataKinds.Phone.NUMBER,
+                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                        ),
+                        null, null, null
+                    )?.use { c ->
+                        if (c.moveToFirst()) {
+                            val number = c.getString(0).orEmpty()
+                            val name = c.getString(1) ?: number
+                            insertAtCursor("$name $number")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     /** Messages we've sent this session. Shown even when we can't write them to
      *  the provider (i.e. when we're not the default SMS app). */
@@ -100,6 +142,90 @@ class ThreadActivity : AppCompatActivity() {
                 )
             }
         }
+
+        // Attachments + emoji
+        binding.plusButton.setOnClickListener { showAttachMenu() }
+        binding.emojiButton.setOnClickListener { showEmojiPicker() }
+        binding.attachmentRemove.setOnClickListener { clearAttachment() }
+
+        // Accept images/GIFs inserted from the keyboard (e.g. Gboard GIFs).
+        ViewCompat.setOnReceiveContentListener(binding.input, arrayOf("image/*")) { _, payload ->
+            val split = payload.partition { it.uri != null }
+            split.first?.clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.let { setAttachment(it) }
+            split.second
+        }
+    }
+
+    private fun showAttachMenu() {
+        AlertDialog.Builder(this)
+            .setItems(
+                arrayOf(getString(R.string.attach_photo), getString(R.string.attach_contact))
+            ) { _, which ->
+                when (which) {
+                    0 -> pickMedia.launch(
+                        PickVisualMediaRequest.Builder()
+                            .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            .build()
+                    )
+                    1 -> runCatching {
+                        pickContactShare.launch(
+                            Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                        )
+                    }
+                }
+            }
+            .show()
+    }
+
+    private fun setAttachment(uri: Uri) {
+        pendingAttachment = uri
+        binding.attachmentPreview.visibility = View.VISIBLE
+        runCatching { binding.attachmentThumb.setImageURI(uri) }
+    }
+
+    private fun clearAttachment() {
+        pendingAttachment = null
+        binding.attachmentPreview.visibility = View.GONE
+        binding.attachmentThumb.setImageDrawable(null)
+    }
+
+    private fun insertAtCursor(text: String) {
+        val editable = binding.input.text
+        val pos = binding.input.selectionStart.coerceAtLeast(0)
+        editable.insert(pos, text)
+    }
+
+    private fun showEmojiPicker() {
+        val grid = GridView(this).apply {
+            numColumns = 6
+            setBackgroundColor(0xFFFFFFFF.toInt())
+            setPadding(8, 8, 8, 8)
+            adapter = object : BaseAdapter() {
+                override fun getCount() = EMOJI.size
+                override fun getItem(p: Int) = EMOJI[p]
+                override fun getItemId(p: Int) = p.toLong()
+                override fun getView(p: Int, cv: View?, parent: android.view.ViewGroup): View {
+                    val tv = (cv as? TextView) ?: TextView(this@ThreadActivity).apply {
+                        textSize = 26f
+                        gravity = Gravity.CENTER
+                        setPadding(8, 14, 8, 14)
+                    }
+                    tv.text = EMOJI[p]
+                    return tv
+                }
+            }
+        }
+        val popup = PopupWindow(
+            grid,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            (resources.displayMetrics.density * 240).toInt(),
+            true
+        )
+        popup.elevation = 12f
+        grid.setOnItemClickListener { _, _, position, _ ->
+            insertAtCursor(EMOJI[position])
+        }
+        popup.showAtLocation(binding.root, Gravity.BOTTOM, 0, 0)
     }
 
     /** Work out who this conversation is with, from the various launch intents. */
@@ -193,28 +319,59 @@ class ThreadActivity : AppCompatActivity() {
 
     private fun send() {
         val body = binding.input.text?.toString()?.trim().orEmpty()
-        if (body.isEmpty()) return
+        val attachment = pendingAttachment
+        if (body.isEmpty() && attachment == null) return
         val addr = currentAddress()
         if (addr.isNullOrBlank()) {
             toast(getString(R.string.enter_recipient))
             return
         }
         address = addr
+        if (attachment != null) sendMms(addr, body, attachment) else sendSms(addr, body)
+    }
+
+    private fun sendSms(addr: String, body: String) {
         lifecycleScope.launch {
-            // Sending only needs the SEND_SMS permission — not default-app status.
-            // When we're not the default app the OS won't let us persist the
-            // message to the Sent box, so we show it optimistically instead.
             runCatching { repo.sendMessage(addr, body) }
                 .onSuccess {
-                    binding.input.setText("")
-                    binding.recipientRow.visibility = View.GONE
-                    binding.recipientDivider.visibility = View.GONE
-                    title = repo.displayName(addr)
+                    onSent(addr)
                     locallySent.add(SmsMessage(body, System.currentTimeMillis(), incoming = false))
                     reload()
                 }
                 .onFailure { toast(it.message ?: "Couldn't send message.") }
         }
+    }
+
+    /** Send a picture/GIF as MMS, then show it optimistically in the thread. */
+    private fun sendMms(addr: String, body: String, attachment: Uri) {
+        toast(getString(R.string.sending_picture))
+        lifecycleScope.launch {
+            val data = repo.readAttachment(attachment)
+            if (data == null) {
+                toast(getString(R.string.cant_read_image))
+                return@launch
+            }
+            val (bytes, mime) = data
+            val ok = MmsSender.send(applicationContext, addr, body.ifBlank { null }, bytes, mime)
+            if (!ok) {
+                toast(getString(R.string.picture_send_failed))
+                return@launch
+            }
+            onSent(addr)
+            clearAttachment()
+            val cached = repo.cacheAttachment(bytes, mime)
+            locallySent.add(
+                SmsMessage(body, System.currentTimeMillis(), incoming = false, imageUri = cached, imageType = mime)
+            )
+            reload()
+        }
+    }
+
+    private fun onSent(addr: String) {
+        binding.input.setText("")
+        binding.recipientRow.visibility = View.GONE
+        binding.recipientDivider.visibility = View.GONE
+        title = repo.displayName(addr)
     }
 
     private fun runClaude(fillReply: Boolean) {
@@ -304,5 +461,15 @@ class ThreadActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_THREAD_ID = "thread_id"
         const val EXTRA_ADDRESS = "address"
+
+        /** A compact set of common emoji for the in-app picker. */
+        private val EMOJI = listOf(
+            "😀", "😂", "🥰", "😍", "😊", "😎", "😇", "🙂", "😉", "😏", "😴", "🤔",
+            "😢", "😭", "😡", "🥳", "😱", "🤯", "🤗", "🙄", "😬", "😅", "😘", "😜",
+            "👍", "👎", "👌", "🙏", "👏", "🙌", "💪", "🤝", "✌️", "🤞", "👋", "🤙",
+            "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💔", "💯", "🔥", "✨", "⭐",
+            "🎉", "🎂", "🎁", "💐", "🌹", "☀️", "🌙", "⚡", "☕", "🍕", "🍻", "🚗",
+            "📞", "📱", "💬", "✅", "❌", "❓", "❗", "💤", "🤣", "😉", "👀", "💀"
+        )
     }
 }

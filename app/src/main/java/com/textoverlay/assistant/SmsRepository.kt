@@ -258,6 +258,32 @@ class SmsRepository(private val context: Context) {
             SmsManager.getDefault()
         }
 
+    /**
+     * Read an attachment to send: GIFs are kept as-is (to preserve animation),
+     * other images are re-encoded to a modest JPEG to stay under MMS limits.
+     */
+    suspend fun readAttachment(uri: Uri): Pair<ByteArray, String>? = withContext(Dispatchers.IO) {
+        runCatching {
+            val mime = resolver.getType(uri) ?: "image/jpeg"
+            val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching null
+            if (mime == "image/gif") return@runCatching raw to "image/gif"
+            val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size)
+                ?: return@runCatching raw to mime
+            val scaled = downscale(bmp, 1024)
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, out)
+            out.toByteArray() to "image/jpeg"
+        }.getOrNull()
+    }
+
+    /** Persist attachment bytes to a cache file; returns a uri string for display. */
+    fun cacheAttachment(bytes: ByteArray, mime: String): String {
+        val ext = if (mime == "image/gif") "gif" else "jpg"
+        val f = java.io.File(context.cacheDir, "sent_${System.currentTimeMillis()}.$ext")
+        f.writeBytes(bytes)
+        return Uri.fromFile(f).toString()
+    }
+
     /** Map a phone number to a contact name, falling back to the number itself. */
     fun displayName(address: String): String {
         if (address.isBlank()) return "(unknown)"

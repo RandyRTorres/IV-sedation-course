@@ -27,6 +27,12 @@
     <string name="summarizing">Summarizing new messages…</string>
     <string name="reply">Reply</string>
     <string name="sent">Sent</string>
+    <string name="attach">Attach</string>
+    <string name="emoji">Emoji</string>
+    <string name="attach_photo">Photo or GIF</string>
+    <string name="attach_contact">Contact</string>
+    <string name="sending_picture">Sending picture…</string>
+    <string name="picture_send_failed">Couldn\'t send the picture.</string>
     <string name="picture_title">Picture</string>
     <string name="picture">Picture message</string>
     <string name="ok">OK</string>

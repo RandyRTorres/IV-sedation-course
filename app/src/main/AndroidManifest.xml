@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Core SMS/MMS messaging permissions for a default messaging app -->
-    <uses-permission android:name="android.permission.SEND_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <!-- Read existing texts to show conversations + give Claude context.
+         Sending is handed off to the phone's own Messages app, so we do NOT
+         request SEND_SMS / RECEIVE_SMS (which Samsung blocks for sideloaded
+         apps). READ_SMS is best-effort: the app still works without it. -->
     <uses-permission android:name="android.permission.READ_SMS" />
-    <uses-permission android:name="android.permission.RECEIVE_MMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Internet access for the Claude API -->
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -19,7 +18,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.TextOverlayAssistant">
 
-        <!-- Conversation list — the app's launcher screen -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -30,72 +28,16 @@
             </intent-filter>
         </activity>
 
-        <!-- A single conversation. Also handles "send to" intents so the app
-             can be chosen for sms:/mms: links and the share sheet. -->
         <activity
             android:name=".ThreadActivity"
-            android:exported="true"
+            android:exported="false"
             android:parentActivityName=".MainActivity"
-            android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.SENDTO" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="sms" />
-                <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:mimeType="text/plain" />
-            </intent-filter>
-        </activity>
+            android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".SettingsActivity"
             android:exported="false"
             android:parentActivityName=".MainActivity" />
-
-        <!-- Receives incoming SMS once we are the default SMS app.
-             Required (with BROADCAST_SMS) to be eligible as the default app. -->
-        <receiver
-            android:name=".SmsDeliverReceiver"
-            android:exported="true"
-            android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter>
-                <action android:name="android.provider.Telephony.SMS_DELIVER" />
-            </intent-filter>
-        </receiver>
-
-        <!-- Receives incoming MMS. Required for default-app eligibility even
-             though full MMS handling is out of scope for this version. -->
-        <receiver
-            android:name=".MmsDeliverReceiver"
-            android:exported="true"
-            android:permission="android.permission.BROADCAST_WAP_PUSH">
-            <intent-filter>
-                <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
-                <data android:mimeType="application/vnd.wap.mms-message" />
-            </intent-filter>
-        </receiver>
-
-        <!-- "Respond via message" service (quick reply from the dialer).
-             Required (with SEND_RESPOND_VIA_MESSAGE) for default-app eligibility. -->
-        <service
-            android:name=".HeadlessSmsSendService"
-            android:exported="true"
-            android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
-            <intent-filter>
-                <action android:name="android.intent.action.RESPOND_VIA_MESSAGE" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="sms" />
-                <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
-            </intent-filter>
-        </service>
 
     </application>
 </manifest>

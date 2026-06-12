@@ -1,19 +1,17 @@
 package com.textoverlay.assistant
 
-import android.annotation.SuppressLint
-import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.Telephony
-import android.telephony.SmsManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Reads and writes SMS through the system Telephony provider, and sends texts
- * over the air. Only meaningful while this app is the default SMS app — that is
- * what grants write access to the provider and the ability to send.
+ * Reads SMS conversations from the system Telephony provider (best-effort —
+ * works only if READ_SMS is granted) and resolves contact names. Sending is
+ * handled by handing the message off to the phone's default Messages app, so
+ * this class never needs send/write permissions.
  */
 class SmsRepository(private val context: Context) {
 
@@ -91,59 +89,6 @@ class SmsRepository(private val context: Context) {
         }
         out
     }
-
-    /** Mark every message in a thread as read. */
-    suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
-        val values = ContentValues().apply { put(Telephony.Sms.READ, 1) }
-        runCatching {
-            resolver.update(
-                Telephony.Sms.CONTENT_URI,
-                values,
-                "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0",
-                arrayOf(threadId.toString())
-            )
-        }
-        Unit
-    }
-
-    /** Resolve (or create) the thread id for an address. */
-    suspend fun threadIdFor(address: String): Long = withContext(Dispatchers.IO) {
-        runCatching {
-            Telephony.Threads.getOrCreateThreadId(context, address)
-        }.getOrDefault(0L)
-    }
-
-    /**
-     * Send a text and record it in the provider's Sent box (the default app is
-     * responsible for persisting its own sent messages).
-     */
-    suspend fun sendMessage(address: String, body: String) = withContext(Dispatchers.IO) {
-        val sms = smsManager()
-        val parts = sms.divideMessage(body)
-        if (parts.size > 1) {
-            sms.sendMultipartTextMessage(address, null, parts, null, null)
-        } else {
-            sms.sendTextMessage(address, null, body, null, null)
-        }
-        val values = ContentValues().apply {
-            put(Telephony.Sms.ADDRESS, address)
-            put(Telephony.Sms.BODY, body)
-            put(Telephony.Sms.DATE, System.currentTimeMillis())
-            put(Telephony.Sms.READ, 1)
-            put(Telephony.Sms.TYPE, Telephony.Sms.MESSAGE_TYPE_SENT)
-        }
-        runCatching { resolver.insert(Telephony.Sms.Sent.CONTENT_URI, values) }
-        Unit
-    }
-
-    @SuppressLint("ObsoleteSdkInt")
-    private fun smsManager(): SmsManager =
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-            context.getSystemService(SmsManager::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            SmsManager.getDefault()
-        }
 
     /** Map a phone number to a contact name, falling back to the number itself. */
     fun displayName(address: String): String {

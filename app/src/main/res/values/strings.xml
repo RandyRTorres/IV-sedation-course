@@ -10,7 +10,7 @@
 
     <!-- Default-SMS banner -->
     <string name="make_default_title">Set AI Messages as your texting app</string>
-    <string name="make_default_body">To send and receive texts here, make AI Messages your default SMS app.</string>
+    <string name="make_default_body">Texting and AI replies work now. Optionally make AI Messages your default SMS app for instant incoming alerts and saved sent history.</string>
     <string name="make_default_button">Make default</string>
     <string name="grant_permissions">Allow SMS &amp; contacts</string>
 

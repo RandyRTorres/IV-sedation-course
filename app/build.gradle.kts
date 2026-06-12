@@ -15,6 +15,18 @@ android {
         versionName = "1.0"
     }
 
+    signingConfigs {
+        // A fixed debug keystore committed to the repo so every CI build is
+        // signed with the same key. This lets new builds install on top of an
+        // existing install without "App not installed" signature errors.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false

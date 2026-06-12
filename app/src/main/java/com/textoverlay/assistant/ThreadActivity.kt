@@ -24,6 +24,10 @@ class ThreadActivity : AppCompatActivity() {
     private var threadId: Long = -1L
     private var address: String? = null
 
+    /** Messages we've sent this session. Shown even when we can't write them to
+     *  the provider (i.e. when we're not the default SMS app). */
+    private val locallySent = ArrayList<SmsMessage>()
+
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) = reload()
     }
@@ -90,12 +94,16 @@ class ThreadActivity : AppCompatActivity() {
             if (threadId <= 0 && !addr.isNullOrBlank()) {
                 threadId = repo.threadIdFor(addr)
             }
-            if (threadId > 0) {
-                val msgs = repo.loadMessages(threadId)
-                adapter.submit(msgs)
-                if (msgs.isNotEmpty()) binding.list.scrollToPosition(msgs.size - 1)
-                repo.markThreadRead(threadId)
+            val provider = if (threadId > 0) repo.loadMessages(threadId) else emptyList()
+            // Keep any locally-sent message that the provider doesn't already have.
+            val extras = locallySent.filter { ls ->
+                provider.none { !it.incoming && it.body == ls.body &&
+                    kotlin.math.abs(it.date - ls.date) < 60_000 }
             }
+            val display = provider + extras
+            adapter.submit(display)
+            if (display.isNotEmpty()) binding.list.scrollToPosition(display.size - 1)
+            if (threadId > 0) repo.markThreadRead(threadId)
         }
     }
 
@@ -112,17 +120,17 @@ class ThreadActivity : AppCompatActivity() {
             toast(getString(R.string.enter_recipient))
             return
         }
-        if (Telephony.Sms.getDefaultSmsPackage(this) != packageName) {
-            toast(getString(R.string.not_default_warning))
-            return
-        }
         address = addr
         lifecycleScope.launch {
+            // Sending only needs the SEND_SMS permission — not default-app status.
+            // When we're not the default app the OS won't let us persist the
+            // message to the Sent box, so we show it optimistically instead.
             runCatching { repo.sendMessage(addr, body) }
                 .onSuccess {
                     binding.input.setText("")
                     binding.recipient.visibility = View.GONE
                     title = repo.displayName(addr)
+                    locallySent.add(SmsMessage(body, System.currentTimeMillis(), incoming = false))
                     reload()
                 }
                 .onFailure { toast(it.message ?: "Couldn't send message.") }

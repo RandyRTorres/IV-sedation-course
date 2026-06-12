@@ -1,11 +1,14 @@
 package com.textoverlay.assistant
 
+import android.content.Intent
 import android.database.ContentObserver
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.ContactsContract
 import android.provider.Telephony
 import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -32,6 +35,35 @@ class ThreadActivity : AppCompatActivity() {
         override fun onChange(selfChange: Boolean) = reload()
     }
 
+    /** System contact picker (phone-number list). */
+    private val pickContact = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        if (res.resultCode == android.app.Activity.RESULT_OK) {
+            res.data?.data?.let { uri ->
+                runCatching {
+                    contentResolver.query(
+                        uri,
+                        arrayOf(
+                            ContactsContract.CommonDataKinds.Phone.NUMBER,
+                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+                        ),
+                        null, null, null
+                    )?.use { c ->
+                        if (c.moveToFirst()) {
+                            val number = c.getString(0).orEmpty()
+                            val name = c.getString(1)
+                            binding.recipient.setText(number)
+                            binding.recipient.dismissDropDown()
+                            address = number
+                            title = name ?: repo.displayName(number)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityThreadBinding.inflate(layoutInflater)
@@ -51,6 +83,22 @@ class ThreadActivity : AppCompatActivity() {
         binding.sendButton.setOnClickListener { send() }
         binding.summarizeButton.setOnClickListener { runClaude(fillReply = false) }
         binding.suggestButton.setOnClickListener { runClaude(fillReply = true) }
+
+        // "To" field: name/number autocomplete + contact picker.
+        binding.recipient.setAdapter(ContactCompletionAdapter(this))
+        binding.recipient.setOnItemClickListener { _, _, _, _ ->
+            binding.recipient.text?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let {
+                address = it
+                title = repo.displayName(it)
+            }
+        }
+        binding.contactsButton.setOnClickListener {
+            runCatching {
+                pickContact.launch(
+                    Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
+                )
+            }
+        }
     }
 
     /** Work out who this conversation is with, from the various launch intents. */
@@ -72,7 +120,9 @@ class ThreadActivity : AppCompatActivity() {
         }
 
         val newConversation = threadId <= 0 && address.isNullOrBlank()
-        binding.recipient.visibility = if (newConversation) View.VISIBLE else View.GONE
+        val vis = if (newConversation) View.VISIBLE else View.GONE
+        binding.recipientRow.visibility = vis
+        binding.recipientDivider.visibility = vis
         title = if (address.isNullOrBlank()) getString(R.string.new_message)
         else repo.displayName(address!!)
     }
@@ -128,7 +178,8 @@ class ThreadActivity : AppCompatActivity() {
             runCatching { repo.sendMessage(addr, body) }
                 .onSuccess {
                     binding.input.setText("")
-                    binding.recipient.visibility = View.GONE
+                    binding.recipientRow.visibility = View.GONE
+                    binding.recipientDivider.visibility = View.GONE
                     title = repo.displayName(addr)
                     locallySent.add(SmsMessage(body, System.currentTimeMillis(), incoming = false))
                     reload()

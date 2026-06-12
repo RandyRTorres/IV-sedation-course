@@ -21,17 +21,52 @@
         android:layout_height="0.5dp"
         android:background="@color/ios_separator" />
 
-    <EditText
-        android:id="@+id/recipient"
+    <LinearLayout
+        android:id="@+id/recipient_row"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@android:color/transparent"
-        android:hint="@string/recipient_hint"
-        android:importantForAutofill="no"
-        android:inputType="phone"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
-        android:textColorHint="@color/ios_secondary_text"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/to_label"
+            android:textColor="@color/ios_secondary_text"
+            android:textSize="16sp" />
+
+        <AutoCompleteTextView
+            android:id="@+id/recipient"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:completionThreshold="1"
+            android:hint="@string/recipient_hint"
+            android:importantForAutofill="no"
+            android:inputType="textPersonName"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="12dp"
+            android:textColor="@color/ios_primary_text"
+            android:textColorHint="@color/ios_secondary_text" />
+
+        <ImageButton
+            android:id="@+id/contacts_button"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/pick_contact"
+            android:src="@drawable/ic_contact" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/recipient_divider"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/ios_separator"
         android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView

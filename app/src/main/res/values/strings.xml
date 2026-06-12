@@ -15,7 +15,9 @@
     <string name="grant_permissions">Allow SMS &amp; contacts</string>
 
     <!-- Thread -->
-    <string name="recipient_hint">Phone number</string>
+    <string name="recipient_hint">Name or number</string>
+    <string name="to_label">To:</string>
+    <string name="pick_contact">Choose a contact</string>
     <string name="message_hint">Text message</string>
     <string name="send">Send</string>
     <string name="summarize">Summarize</string>

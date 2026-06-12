@@ -4,6 +4,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import android.telephony.SmsManager
+import android.telephony.TelephonyManager
 
 /**
  * Handles "Respond via message" requests (e.g. declining a call with a text).
@@ -14,7 +15,7 @@ class HeadlessSmsSendService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == Intent.ACTION_RESPOND_VIA_MESSAGE) {
+        if (intent != null && intent.action == TelephonyManager.ACTION_RESPOND_VIA_MESSAGE) {
             val recipients = intent.data?.schemeSpecificPart
                 ?.split(";")
                 ?.map { it.trim() }

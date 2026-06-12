@@ -11,7 +11,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-/** What we ask Claude to produce for each incoming message. */
+/** What Claude produces for a conversation: a short summary and a ready reply. */
 data class Suggestion(
     val summary: String,
     val suggestedReply: String
@@ -31,16 +31,16 @@ class ClaudeClient(private val settings: SettingsStore) {
         .build()
 
     /**
-     * Summarize [message] and propose a reply. Runs on IO dispatcher.
-     * Throws [IOException] / [IllegalStateException] on failure so the caller
-     * can surface a readable error in the panel.
+     * Summarize a conversation with [contactName] and propose my next reply.
+     * [transcript] is the conversation rendered as alternating "Them:" / "Me:"
+     * lines, oldest first. Runs on the IO dispatcher.
      */
-    suspend fun summarizeAndSuggest(message: IncomingMessage): Suggestion =
+    suspend fun analyze(contactName: String, transcript: String): Suggestion =
         withContext(Dispatchers.IO) {
             val apiKey = settings.apiKey
-            check(apiKey.isNotBlank()) { "No API key set. Open the app and paste your Claude API key." }
+            check(apiKey.isNotBlank()) { "No API key set. Add your Claude API key in Settings." }
 
-            val body = buildRequestBody(message, settings.tone)
+            val body = buildRequestBody(contactName, transcript, settings.tone)
             val request = Request.Builder()
                 .url(ENDPOINT)
                 .addHeader("x-api-key", apiKey)
@@ -58,7 +58,7 @@ class ClaudeClient(private val settings: SettingsStore) {
             }
         }
 
-    private fun buildRequestBody(message: IncomingMessage, tone: String): JSONObject {
+    private fun buildRequestBody(contactName: String, transcript: String, tone: String): JSONObject {
         val schema = JSONObject()
             .put("type", "object")
             .put(
@@ -70,13 +70,14 @@ class ClaudeClient(private val settings: SettingsStore) {
             .put("additionalProperties", false)
 
         val userText = buildString {
-            append("An incoming message just arrived.\n")
-            append("App: ").append(message.appName).append('\n')
-            append("From: ").append(message.sender).append('\n')
-            append("Message:\n").append(message.text).append("\n\n")
-            append("Do two things:\n")
-            append("1. summary: one or two sentences capturing what they're saying and what (if anything) they want.\n")
-            append("2. suggested_reply: a ready-to-send reply I could send back, written in a ")
+            append("Here is a text-message conversation between me and ")
+            append(contactName)
+            append(". \"Them:\" is ").append(contactName)
+            append(", \"Me:\" is me.\n\n")
+            append(transcript)
+            append("\n\nDo two things:\n")
+            append("1. summary: one or two sentences capturing where the conversation stands and what (if anything) they want from me.\n")
+            append("2. suggested_reply: a ready-to-send next message I could send back, written in a ")
             append(tone)
             append(" tone, in the first person as me. No preamble, just the reply text.")
         }
@@ -105,7 +106,7 @@ class ClaudeClient(private val settings: SettingsStore) {
 
         // A safety refusal returns HTTP 200 with stop_reason "refusal".
         if (root.optString("stop_reason") == "refusal") {
-            throw IllegalStateException("Claude declined to respond to this message.")
+            throw IllegalStateException("Claude declined to respond to this conversation.")
         }
 
         val content = root.optJSONArray("content")
@@ -133,7 +134,7 @@ class ClaudeClient(private val settings: SettingsStore) {
             JSONObject(raw).optJSONObject("error")?.optString("message")
         }.getOrNull()
         return when (code) {
-            401 -> "Invalid API key. Check it in the app settings."
+            401 -> "Invalid API key. Check it in Settings."
             429 -> "Rate limited by Claude. Try again in a moment."
             in 500..599 -> "Claude is temporarily unavailable. Try again."
             else -> apiMessage?.takeIf { it.isNotBlank() } ?: "Claude API error ($code)."

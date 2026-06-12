@@ -1,108 +1,142 @@
 package com.textoverlay.assistant
 
+import android.Manifest
+import android.app.role.RoleManager
 import android.content.Intent
-import android.net.Uri
+import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
-import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
+import android.provider.Telephony
+import android.view.View
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
 import com.textoverlay.assistant.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
 
-/**
- * One-screen setup: paste your Claude API key, grant the two permissions the
- * overlay needs (draw-over-other-apps + notification access), then start it.
- */
+/** Conversation list — the app's home screen. */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var settings: SettingsStore
+    private lateinit var repo: SmsRepository
+    private val adapter = ConversationAdapter { openThread(it.threadId, it.address) }
+
+    private val requestPermissions = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { refresh() }
+
+    private val requestDefault = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { refresh() }
+
+    private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) = refresh()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        settings = SettingsStore(this)
+        repo = SmsRepository(this)
 
-        binding.apiKeyInput.setText(settings.apiKey)
-        binding.toneInput.setText(settings.tone)
+        setSupportActionBar(binding.toolbar)
+        binding.list.layoutManager = LinearLayoutManager(this)
+        binding.list.adapter = adapter
 
-        binding.saveButton.setOnClickListener { saveSettings() }
-        binding.overlayPermissionButton.setOnClickListener { requestOverlayPermission() }
-        binding.notificationAccessButton.setOnClickListener { openNotificationAccess() }
-        binding.startButton.setOnClickListener { startOverlay() }
+        binding.fab.setOnClickListener { openThread(-1L, null) }
+        binding.bannerButton.setOnClickListener { fixSetup() }
+        binding.settingsButton.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        ensurePermissions()
     }
 
     override fun onResume() {
         super.onResume()
-        refreshStatuses()
+        contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
+        refresh()
     }
 
-    private fun saveSettings() {
-        settings.apiKey = binding.apiKeyInput.text?.toString().orEmpty()
-        val tone = binding.toneInput.text?.toString().orEmpty()
-        settings.tone = tone.ifBlank { SettingsStore.DEFAULT_TONE }
-        Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
-        refreshStatuses()
+    override fun onPause() {
+        super.onPause()
+        contentResolver.unregisterContentObserver(observer)
     }
 
-    private fun requestOverlayPermission() {
-        if (Settings.canDrawOverlays(this)) return
+    private fun isDefaultSmsApp(): Boolean =
+        Telephony.Sms.getDefaultSmsPackage(this) == packageName
+
+    private fun hasSmsPermissions(): Boolean =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    private fun ensurePermissions() {
+        val needed = mutableListOf(
+            Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_CONTACTS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            needed += Manifest.permission.POST_NOTIFICATIONS
+        }
+        val toAsk = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (toAsk.isNotEmpty()) requestPermissions.launch(toAsk.toTypedArray())
+    }
+
+    /** One button that walks the user through whatever is still missing. */
+    private fun fixSetup() {
+        if (!hasSmsPermissions()) {
+            ensurePermissions()
+            return
+        }
+        if (!isDefaultSmsApp()) requestDefaultSmsApp()
+    }
+
+    private fun requestDefaultSmsApp() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val rm = getSystemService(RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_SMS) && !rm.isRoleHeld(RoleManager.ROLE_SMS)) {
+                requestDefault.launch(rm.createRequestRoleIntent(RoleManager.ROLE_SMS))
+                return
+            }
+        }
+        @Suppress("DEPRECATION")
+        val intent = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
+            .putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
+        requestDefault.launch(intent)
+    }
+
+    private fun refresh() {
+        val ready = isDefaultSmsApp() && hasSmsPermissions()
+        binding.banner.visibility = if (ready) View.GONE else View.VISIBLE
+        binding.bannerButton.text = getString(
+            if (!hasSmsPermissions()) R.string.grant_permissions else R.string.make_default_button
+        )
+        if (!hasSmsPermissions()) {
+            adapter.submit(emptyList())
+            binding.empty.visibility = View.GONE
+            return
+        }
+        lifecycleScope.launch {
+            val items = repo.loadConversations()
+            adapter.submit(items)
+            binding.empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun openThread(threadId: Long, address: String?) {
         startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
+            Intent(this, ThreadActivity::class.java)
+                .putExtra(ThreadActivity.EXTRA_THREAD_ID, threadId)
+                .putExtra(ThreadActivity.EXTRA_ADDRESS, address)
         )
-    }
-
-    private fun openNotificationAccess() {
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-    }
-
-    private fun startOverlay() {
-        if (!settings.hasApiKey) {
-            Toast.makeText(this, R.string.no_api_key, Toast.LENGTH_LONG).show()
-            return
-        }
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, R.string.need_overlay, Toast.LENGTH_LONG).show()
-            requestOverlayPermission()
-            return
-        }
-        if (!hasNotificationAccess()) {
-            Toast.makeText(this, R.string.need_notification_access, Toast.LENGTH_LONG).show()
-            openNotificationAccess()
-            return
-        }
-        startForegroundService(Intent(this, OverlayService::class.java))
-        Toast.makeText(this, R.string.overlay_started, Toast.LENGTH_SHORT).show()
-        moveTaskToBack(true)
-    }
-
-    private fun refreshStatuses() {
-        binding.overlayStatus.text = statusLine(
-            R.string.overlay_permission, Settings.canDrawOverlays(this)
-        )
-        binding.notificationStatus.text = statusLine(
-            R.string.notification_access, hasNotificationAccess()
-        )
-        binding.apiKeyStatus.text = statusLine(
-            R.string.api_key_label, settings.hasApiKey
-        )
-    }
-
-    private fun statusLine(labelRes: Int, granted: Boolean): String {
-        val mark = if (granted) "✓" else "✗"
-        return "$mark ${getString(labelRes)}"
-    }
-
-    private fun hasNotificationAccess(): Boolean {
-        val enabled = Settings.Secure.getString(
-            contentResolver, "enabled_notification_listeners"
-        ).orEmpty()
-        val component = "$packageName/${MessageNotificationListener::class.java.name}"
-        val flat = "$packageName/.${MessageNotificationListener::class.java.simpleName}"
-        return enabled.contains(component) || enabled.contains(flat)
     }
 }

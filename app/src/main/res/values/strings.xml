@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Text Overlay Assistant</string>
+    <string name="listener_label">Text Overlay Assistant message reader</string>
+    <string name="tagline">A floating bubble that summarizes incoming messages and suggests an AI reply.</string>
+
+    <string name="api_key_label">Claude API key</string>
+    <string name="api_key_hint">sk-ant-…</string>
+    <string name="tone_label">Reply tone</string>
+    <string name="tone_hint">friendly and concise</string>
+    <string name="save">Save</string>
+    <string name="saved">Saved</string>
+
+    <string name="permissions">Status</string>
+    <string name="overlay_permission">Draw over other apps</string>
+    <string name="notification_access">Notification access</string>
+    <string name="grant_overlay">Grant \"draw over other apps\"</string>
+    <string name="grant_notification">Grant notification access</string>
+    <string name="start_overlay">Start overlay</string>
+    <string name="overlay_started">Overlay started</string>
+
+    <string name="need_overlay">Grant \"draw over other apps\" first.</string>
+    <string name="need_notification_access">Grant notification access first.</string>
+    <string name="no_api_key">Add your Claude API key first.</string>
+
+    <string name="privacy_note">Your API key is stored encrypted on this device and is only sent to api.anthropic.com. Message text is sent to Claude to generate the summary and reply.</string>
+
+    <!-- Overlay -->
+    <string name="channel_name">Overlay</string>
+    <string name="overlay_running">Listening for messages</string>
+    <string name="bubble_glyph">AI</string>
+    <string name="from_via">From %1$s via %2$s</string>
+    <string name="summary_heading">SUMMARY</string>
+    <string name="reply_heading">SUGGESTED REPLY</string>
+    <string name="thinking">Thinking…</string>
+    <string name="generic_error">Something went wrong.</string>
+    <string name="copy_reply">Copy reply</string>
+    <string name="regenerate">Redo</string>
+    <string name="close">Close</string>
+    <string name="copied">Reply copied — paste it into your chat</string>
+</resources>

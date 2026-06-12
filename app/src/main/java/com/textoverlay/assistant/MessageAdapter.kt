@@ -56,14 +56,16 @@ class MessageAdapter(
                 binding.image.setOnClickListener(null)
             }
 
-            // Alignment + bubble colour
+            // Alignment, bubble colour, and text colour
             val params = binding.bubble.layoutParams as FrameLayout.LayoutParams
             if (item.incoming) {
                 params.gravity = Gravity.START
                 binding.bubble.setBackgroundResource(R.drawable.bubble_in)
+                binding.text.setTextColor(0xFF000000.toInt())
             } else {
                 params.gravity = Gravity.END
                 binding.bubble.setBackgroundResource(R.drawable.bubble_out)
+                binding.text.setTextColor(0xFFFFFFFF.toInt())
             }
             binding.bubble.layoutParams = params
         }

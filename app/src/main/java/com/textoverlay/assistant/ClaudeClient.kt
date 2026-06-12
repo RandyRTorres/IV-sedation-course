@@ -61,7 +61,9 @@ class ClaudeClient(private val settings: SettingsStore) {
                 append(" into account.")
             }
             append("\n\nDo two things:\n")
-            append("1. summary: one or two sentences capturing where the conversation stands, what's in any image, and what (if anything) they want from me.\n")
+            append("1. summary: one or two sentences capturing where the conversation stands")
+            if (images.isNotEmpty()) append(", what's in the image")
+            append(", and what (if anything) they want from me.\n")
             append("2. suggested_reply: a ready-to-send next message I could send back, written in a ")
             append(settings.tone)
             append(" tone, in the first person as me. No preamble, just the reply text.")

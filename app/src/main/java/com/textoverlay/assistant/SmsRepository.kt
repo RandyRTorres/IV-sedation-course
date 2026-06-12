@@ -150,11 +150,32 @@ class SmsRepository(private val context: Context) {
         return out
     }
 
-    /** Load the raw bytes of an image part for sending to Claude. */
-    suspend fun loadImageBytes(uri: String): ByteArray? = withContext(Dispatchers.IO) {
+    /**
+     * Decode an MMS image part and re-encode it as a clean, modest-sized JPEG
+     * for Claude. Returns null if the part can't be decoded (e.g. an MMS that
+     * was never downloaded), so callers can simply skip it.
+     */
+    suspend fun loadImageForClaude(uri: String): ClaudeImage? = withContext(Dispatchers.IO) {
         runCatching {
-            resolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() }
+            val bytes = resolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() }
+                ?: return@runCatching null
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                ?: return@runCatching null
+            val scaled = downscale(bitmap, 1024)
+            val out = java.io.ByteArrayOutputStream()
+            scaled.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            ClaudeImage("image/jpeg", out.toByteArray())
         }.getOrNull()
+    }
+
+    private fun downscale(bitmap: android.graphics.Bitmap, max: Int): android.graphics.Bitmap {
+        val w = bitmap.width
+        val h = bitmap.height
+        if (w <= max && h <= max) return bitmap
+        val ratio = minOf(max.toFloat() / w, max.toFloat() / h)
+        return android.graphics.Bitmap.createScaledBitmap(
+            bitmap, (w * ratio).toInt().coerceAtLeast(1), (h * ratio).toInt().coerceAtLeast(1), true
+        )
     }
 
     /** Mark every message in a thread as read. */

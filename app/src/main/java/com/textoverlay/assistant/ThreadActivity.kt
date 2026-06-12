@@ -183,16 +183,14 @@ class ThreadActivity : AppCompatActivity() {
             }
     }
 
-    /** The most recent pictures in this thread, for Claude to look at. */
+    /** The most recent pictures in this thread, for Claude to look at. Broken
+     *  or never-downloaded MMS images are skipped automatically. */
     private suspend fun threadImages(): List<ClaudeImage> {
         if (threadId <= 0) return emptyList()
         return repo.loadMessages(threadId)
             .filter { it.imageUri != null }
             .takeLast(3)
-            .mapNotNull { m ->
-                repo.loadImageBytes(m.imageUri!!)
-                    ?.let { ClaudeImage(m.imageType ?: "image/jpeg", it) }
-            }
+            .mapNotNull { m -> repo.loadImageForClaude(m.imageUri!!) }
     }
 
     /** Tap an image bubble → ask Claude what's in the picture. */
@@ -204,13 +202,13 @@ class ThreadActivity : AppCompatActivity() {
         }
         setBusy(true)
         lifecycleScope.launch {
-            val bytes = repo.loadImageBytes(uri)
-            if (bytes == null) {
+            val image = repo.loadImageForClaude(uri)
+            if (image == null) {
                 setBusy(false)
                 toast(getString(R.string.cant_read_image))
                 return@launch
             }
-            runCatching { claude.describeImage(ClaudeImage(item.imageType ?: "image/jpeg", bytes)) }
+            runCatching { claude.describeImage(image) }
                 .onSuccess { setBusy(false); showInfo(R.string.picture_title, it) }
                 .onFailure { setBusy(false); toast(it.message ?: "Couldn't reach Claude.") }
         }

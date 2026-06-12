@@ -68,8 +68,17 @@ class MainActivity : AppCompatActivity() {
         contentResolver.unregisterContentObserver(observer)
     }
 
-    private fun isDefaultSmsApp(): Boolean =
-        Telephony.Sms.getDefaultSmsPackage(this) == packageName
+    private fun isDefaultSmsApp(): Boolean {
+        if (Telephony.Sms.getDefaultSmsPackage(this) == packageName) return true
+        // getDefaultSmsPackage can lag behind a role granted via adb; trust the role.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val rm = getSystemService(RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_SMS) && rm.isRoleHeld(RoleManager.ROLE_SMS)) {
+                return true
+            }
+        }
+        return false
+    }
 
     private fun hasSmsPermissions(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) ==
@@ -111,7 +120,13 @@ class MainActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         val intent = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
             .putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
-        requestDefault.launch(intent)
+        // Some OEMs ignore the change-default intent; fall back to the system
+        // Default apps settings screen so the user can still get there.
+        runCatching { requestDefault.launch(intent) }.onFailure {
+            runCatching {
+                requestDefault.launch(Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
+            }
+        }
     }
 
     private fun refresh() {

@@ -34,15 +34,30 @@ class ConversationAdapter(
         RecyclerView.ViewHolder(binding.root) {
         fun bind(item: Conversation) {
             binding.name.text = item.displayName
+            binding.initials.text = initialsOf(item.displayName)
             binding.snippet.text = item.snippet
             binding.time.text = DateUtils.getRelativeTimeSpanString(
                 item.date, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS
             )
-            val emphasis = if (item.unread) android.graphics.Typeface.BOLD
-            else android.graphics.Typeface.NORMAL
-            binding.name.setTypeface(null, emphasis)
-            binding.snippet.setTypeface(null, emphasis)
+            binding.unreadDot.visibility =
+                if (item.unread) android.view.View.VISIBLE else android.view.View.GONE
+            binding.snippet.setTypeface(
+                null,
+                if (item.unread) android.graphics.Typeface.BOLD
+                else android.graphics.Typeface.NORMAL
+            )
             binding.root.setOnClickListener { onClick(item) }
+        }
+    }
+
+    /** Up to two uppercase initials for the avatar; falls back to a glyph. */
+    private fun initialsOf(name: String): String {
+        val words = name.trim().split(Regex("\\s+"))
+            .filter { it.isNotBlank() && it.first().isLetter() }
+        return when {
+            words.size >= 2 -> "${words.first().first()}${words.last().first()}".uppercase()
+            words.size == 1 -> words.first().take(2).uppercase()
+            else -> name.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "#"
         }
     }
 }

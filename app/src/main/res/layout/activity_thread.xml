@@ -3,25 +3,35 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@color/ios_bg"
     android:orientation="vertical">
 
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        app:navigationIcon="@android:drawable/ic_menu_revert"
-        app:titleTextColor="@android:color/white" />
+        android:background="@color/ios_nav"
+        app:navigationIcon="@drawable/ic_back"
+        app:titleCentered="true"
+        app:titleTextAppearance="@style/NavTitle"
+        app:titleTextColor="@color/ios_primary_text" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/ios_separator" />
 
     <EditText
         android:id="@+id/recipient"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
         android:hint="@string/recipient_hint"
         android:importantForAutofill="no"
         android:inputType="phone"
         android:paddingHorizontal="16dp"
         android:paddingVertical="12dp"
+        android:textColorHint="@color/ios_secondary_text"
         android:visibility="gone" />
 
     <androidx.recyclerview.widget.RecyclerView
@@ -31,7 +41,8 @@
         android:layout_weight="1"
         android:clipToPadding="false"
         android:paddingHorizontal="8dp"
-        android:paddingVertical="8dp" />
+        android:paddingVertical="8dp"
+        android:scrollbars="none" />
 
     <ProgressBar
         android:id="@+id/progress"
@@ -45,49 +56,80 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:gravity="center"
         android:orientation="horizontal"
-        android:paddingHorizontal="8dp">
+        android:paddingHorizontal="10dp"
+        android:paddingTop="4dp">
 
-        <Button
+        <TextView
             android:id="@+id/summarize_button"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/summarize" />
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/chip_bg"
+            android:drawablePadding="4dp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/summarize"
+            android:textColor="@color/ios_blue"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
-        <Button
+        <TextView
             android:id="@+id/suggest_button"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/suggest_reply" />
+            android:layout_marginStart="6dp"
+            android:background="@drawable/chip_bg"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/suggest_reply"
+            android:textColor="@color/ios_blue"
+            android:textSize="14sp"
+            android:textStyle="bold" />
     </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:layout_marginTop="6dp"
+        android:background="@color/ios_separator" />
 
     <!-- Compose row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
+        android:background="@color/ios_bg"
+        android:gravity="bottom"
         android:orientation="horizontal"
-        android:padding="8dp">
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="8dp">
 
         <EditText
             android:id="@+id/input"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:background="@drawable/input_pill"
             android:hint="@string/message_hint"
             android:importantForAutofill="no"
             android:inputType="textMultiLine|textCapSentences"
-            android:maxLines="4" />
+            android:maxLines="5"
+            android:minHeight="40dp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="9dp"
+            android:textColor="@color/ios_primary_text"
+            android:textColorHint="@color/ios_secondary_text"
+            android:textSize="16sp" />
 
-        <Button
+        <ImageButton
             android:id="@+id/send_button"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:layout_marginStart="8dp"
-            android:text="@string/send" />
+            android:background="@drawable/send_button_bg"
+            android:contentDescription="@string/send"
+            android:src="@drawable/ic_send_arrow"
+            android:scaleType="centerInside" />
     </LinearLayout>
 </LinearLayout>

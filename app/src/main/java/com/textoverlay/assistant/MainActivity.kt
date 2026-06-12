@@ -45,6 +45,8 @@ class MainActivity : AppCompatActivity() {
         repo = SmsRepository(this)
 
         setSupportActionBar(binding.toolbar)
+        binding.toolbar.subtitle = "v${BuildConfig.VERSION_NAME}"
+        binding.toolbar.setSubtitleTextColor(0xFF8E8E93.toInt())
         binding.list.layoutManager = LinearLayoutManager(this)
         binding.list.adapter = adapter
 

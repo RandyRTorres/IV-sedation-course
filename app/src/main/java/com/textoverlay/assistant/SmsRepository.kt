@@ -101,13 +101,14 @@ class SmsRepository(private val context: Context) {
     }
 
     /** Read MMS messages in a thread, extracting any text body and image part. */
-    private fun loadMms(threadId: Long): List<SmsMessage> {
+    private fun loadMms(threadId: Long, selection: String = "thread_id = ?",
+                        args: Array<String> = arrayOf(threadId.toString())): List<SmsMessage> {
         val out = ArrayList<SmsMessage>()
         resolver.query(
             Telephony.Mms.CONTENT_URI,
             arrayOf("_id", "date", "msg_box"),
-            "thread_id = ?",
-            arrayOf(threadId.toString()),
+            selection,
+            args,
             "date ASC"
         )?.use { c ->
             val idIdx = c.getColumnIndexOrThrow("_id")
@@ -118,36 +119,62 @@ class SmsRepository(private val context: Context) {
                 // MMS dates are in seconds; SMS dates are in millis.
                 val date = c.getLong(dateIdx) * 1000L
                 val incoming = c.getInt(boxIdx) == 1 // MESSAGE_BOX_INBOX
-                var text = ""
-                var imageUri: String? = null
-                var imageType: String? = null
-                resolver.query(
-                    Uri.parse("content://mms/part"),
-                    arrayOf("_id", "ct", "text"),
-                    "mid = ?",
-                    arrayOf(mmsId.toString()),
-                    null
-                )?.use { p ->
-                    val pidIdx = p.getColumnIndexOrThrow("_id")
-                    val ctIdx = p.getColumnIndexOrThrow("ct")
-                    val textIdx = p.getColumnIndexOrThrow("text")
-                    while (p.moveToNext()) {
-                        val ct = p.getString(ctIdx).orEmpty()
-                        when {
-                            ct == "text/plain" -> p.getString(textIdx)?.let { if (it.isNotBlank()) text = it }
-                            ct.startsWith("image/") -> {
-                                imageUri = "content://mms/part/" + p.getLong(pidIdx)
-                                imageType = ct
-                            }
-                        }
-                    }
-                }
+                val (text, imageUri, imageType) = mmsParts(mmsId)
                 if (text.isNotBlank() || imageUri != null) {
                     out += SmsMessage(text, date, incoming, imageUri, imageType)
                 }
             }
         }
         return out
+    }
+
+    /** Extract (text, imageUri, imageType) from an MMS message's parts. */
+    private fun mmsParts(mmsId: Long): Triple<String, String?, String?> {
+        var text = ""
+        var imageUri: String? = null
+        var imageType: String? = null
+        resolver.query(
+            Uri.parse("content://mms/part"),
+            arrayOf("_id", "ct", "text"),
+            "mid = ?",
+            arrayOf(mmsId.toString()),
+            null
+        )?.use { p ->
+            val pidIdx = p.getColumnIndexOrThrow("_id")
+            val ctIdx = p.getColumnIndexOrThrow("ct")
+            val textIdx = p.getColumnIndexOrThrow("text")
+            while (p.moveToNext()) {
+                val ct = p.getString(ctIdx).orEmpty()
+                when {
+                    ct == "text/plain" -> p.getString(textIdx)?.let { if (it.isNotBlank()) text = it }
+                    ct.startsWith("image/") -> {
+                        imageUri = "content://mms/part/" + p.getLong(pidIdx)
+                        imageType = ct
+                    }
+                }
+            }
+        }
+        return Triple(text, imageUri, imageType)
+    }
+
+    /** Unread incoming messages (SMS + MMS) in a thread, oldest first. */
+    suspend fun loadUnread(threadId: Long): List<SmsMessage> = withContext(Dispatchers.IO) {
+        val out = ArrayList<SmsMessage>()
+        resolver.query(
+            Telephony.Sms.CONTENT_URI,
+            arrayOf(Telephony.Sms.BODY, Telephony.Sms.DATE),
+            "${Telephony.Sms.THREAD_ID} = ? AND ${Telephony.Sms.READ} = 0 AND ${Telephony.Sms.TYPE} = ?",
+            arrayOf(threadId.toString(), Telephony.Sms.MESSAGE_TYPE_INBOX.toString()),
+            "${Telephony.Sms.DATE} ASC"
+        )?.use { c ->
+            while (c.moveToNext()) {
+                out += SmsMessage(c.getString(0).orEmpty(), c.getLong(1), incoming = true)
+            }
+        }
+        out += loadMms(threadId, "thread_id = ? AND read = 0 AND msg_box = 1",
+            arrayOf(threadId.toString()))
+        out.sortBy { it.date }
+        out
     }
 
     /**

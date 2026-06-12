@@ -58,6 +58,17 @@
             android:exported="false"
             android:parentActivityName=".MainActivity" />
 
+        <!-- Full-screen photo viewer -->
+        <activity
+            android:name=".ImageViewerActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Material3.Dark.NoActionBar" />
+
+        <!-- Handles inline reply from a message notification -->
+        <receiver
+            android:name=".ReplyReceiver"
+            android:exported="false" />
+
         <!-- Receives incoming SMS once we are the default SMS app.
              Required (with BROADCAST_SMS) to be eligible as the default app. -->
         <receiver

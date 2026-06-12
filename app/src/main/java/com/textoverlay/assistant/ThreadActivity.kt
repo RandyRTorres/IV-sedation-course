@@ -22,10 +22,11 @@ class ThreadActivity : AppCompatActivity() {
     private lateinit var binding: ActivityThreadBinding
     private lateinit var repo: SmsRepository
     private lateinit var claude: ClaudeClient
-    private val adapter = MessageAdapter { onImageTapped(it) }
+    private val adapter = MessageAdapter { openImage(it) }
 
     private var threadId: Long = -1L
     private var address: String? = null
+    private var autoSummaryChecked = false
 
     /** Messages we've sent this session. Shown even when we can't write them to
      *  the provider (i.e. when we're not the default SMS app). */
@@ -153,7 +154,35 @@ class ThreadActivity : AppCompatActivity() {
             val display = provider + extras
             adapter.submit(display)
             if (display.isNotEmpty()) binding.list.scrollToPosition(display.size - 1)
+
+            // Auto-summarize unread messages once, the first time we open the thread.
+            if (!autoSummaryChecked) {
+                autoSummaryChecked = true
+                val unread = if (threadId > 0) repo.loadUnread(threadId) else emptyList()
+                if (unread.isNotEmpty() && SettingsStore(this@ThreadActivity).hasApiKey) {
+                    autoSummarize(unread)
+                }
+            }
             if (threadId > 0) repo.markThreadRead(threadId)
+        }
+    }
+
+    /** Summarize the unread messages (incl. pictures) into the header bar. */
+    private fun autoSummarize(unread: List<SmsMessage>) {
+        binding.summaryBar.visibility = View.VISIBLE
+        binding.summaryText.text = getString(R.string.summarizing)
+        binding.summaryBar.setOnClickListener { binding.summaryBar.visibility = View.GONE }
+        lifecycleScope.launch {
+            val transcript = unread.joinToString("\n") {
+                "Them: " + it.body.ifBlank { "[sent a picture]" }
+            }
+            val images = unread.filter { it.imageUri != null }
+                .takeLast(3)
+                .mapNotNull { m -> repo.loadImageForClaude(m.imageUri!!) }
+            val name = repo.displayName(address.orEmpty())
+            runCatching { claude.summarize(name, transcript, images) }
+                .onSuccess { binding.summaryText.text = it }
+                .onFailure { binding.summaryBar.visibility = View.GONE }
         }
     }
 
@@ -244,25 +273,13 @@ class ThreadActivity : AppCompatActivity() {
             .mapNotNull { m -> repo.loadImageForClaude(m.imageUri!!) }
     }
 
-    /** Tap an image bubble → ask Claude what's in the picture. */
-    private fun onImageTapped(item: SmsMessage) {
+    /** Tap an image bubble → open it full-screen. */
+    private fun openImage(item: SmsMessage) {
         val uri = item.imageUri ?: return
-        if (!SettingsStore(this).hasApiKey) {
-            toast(getString(R.string.no_api_key_short))
-            return
-        }
-        setBusy(true)
-        lifecycleScope.launch {
-            val image = repo.loadImageForClaude(uri)
-            if (image == null) {
-                setBusy(false)
-                toast(getString(R.string.cant_read_image))
-                return@launch
-            }
-            runCatching { claude.describeImage(image) }
-                .onSuccess { setBusy(false); showInfo(R.string.picture_title, it) }
-                .onFailure { setBusy(false); toast(it.message ?: "Couldn't reach Claude.") }
-        }
+        startActivity(
+            Intent(this, ImageViewerActivity::class.java)
+                .putExtra(ImageViewerActivity.EXTRA_IMAGE_URI, uri)
+        )
     }
 
     private fun showSummary(summary: String) = showInfo(R.string.summary_title, summary)

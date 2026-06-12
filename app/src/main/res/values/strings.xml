@@ -24,6 +24,9 @@
     <string name="suggest_reply">Suggest reply</string>
     <string name="thinking">Thinking…</string>
     <string name="summary_title">Summary</string>
+    <string name="summarizing">Summarizing new messages…</string>
+    <string name="reply">Reply</string>
+    <string name="sent">Sent</string>
     <string name="picture_title">Picture</string>
     <string name="picture">Picture message</string>
     <string name="ok">OK</string>

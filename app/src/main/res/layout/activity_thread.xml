@@ -69,6 +69,34 @@
         android:background="@color/ios_separator"
         android:visibility="gone" />
 
+    <!-- AI summary of unread messages, shown on open. Tap to dismiss. -->
+    <LinearLayout
+        android:id="@+id/summary_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#EAF3FF"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="@string/summary_title"
+            android:src="@drawable/ic_sparkle" />
+
+        <TextView
+            android:id="@+id/summary_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#0B3D73"
+            android:textSize="14sp" />
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
         android:layout_width="match_parent"

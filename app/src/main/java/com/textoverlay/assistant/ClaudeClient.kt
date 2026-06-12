@@ -97,6 +97,33 @@ class ClaudeClient(private val settings: SettingsStore) {
         parseSuggestion(raw)
     }
 
+    /**
+     * A short at-a-glance summary of new message(s), for the chat header and
+     * notifications. [images] are any unread pictures Claude should read.
+     */
+    suspend fun summarize(
+        contactName: String,
+        transcript: String,
+        images: List<ClaudeImage> = emptyList()
+    ): String = withContext(Dispatchers.IO) {
+        val apiKey = requireKey()
+        val prompt = buildString {
+            append("Summarize the following new text message(s) from ")
+            append(contactName)
+            append(" in one short, plain sentence — an at-a-glance preview I can read quickly.")
+            if (images.isNotEmpty()) append(" If there's an image, say briefly what it shows.")
+            append("\n\nMessages:\n").append(transcript)
+        }
+        val content = JSONArray()
+        images.forEach { content.put(imageBlock(it)) }
+        content.put(JSONObject().put("type", "text").put("text", prompt))
+        val body = JSONObject()
+            .put("model", MODEL)
+            .put("max_tokens", 200)
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+        firstText(post(apiKey, body)).ifBlank { transcript }
+    }
+
     /** Describe a single picture in a sentence or two (plain text). */
     suspend fun describeImage(image: ClaudeImage): String = withContext(Dispatchers.IO) {
         val apiKey = requireKey()

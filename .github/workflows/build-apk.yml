@@ -1,13 +1,16 @@
 name: Build debug APK
 
 # Builds an installable debug APK on every push to the overlay branch,
-# and whenever triggered manually. Download the APK from the run's
-# "Artifacts" section, then sideload it onto your phone.
+# and whenever triggered manually. The APK is published to the "latest-debug"
+# GitHub Release so it can be downloaded directly on a phone without signing in.
 on:
   push:
     branches:
       - claude/text-app-overlay-summary-k55w2t
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -33,9 +36,19 @@ jobs:
       - name: Build the debug APK
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: Upload the APK
+      - name: Upload the APK as a build artifact
         uses: actions/upload-artifact@v4
         with:
           name: text-overlay-assistant-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish the APK to a public Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-debug
+          name: Latest debug APK
+          body: |
+            Latest debug build of Text Overlay Assistant.
+            Tap **app-debug.apk** below to download and install it on your phone — no sign-in required.
+          files: app/build/outputs/apk/debug/app-debug.apk

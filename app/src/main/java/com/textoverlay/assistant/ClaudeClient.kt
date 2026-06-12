@@ -143,7 +143,7 @@ class ClaudeClient(private val settings: SettingsStore) {
     companion object {
         private const val ENDPOINT = "https://api.anthropic.com/v1/messages"
         private const val ANTHROPIC_VERSION = "2023-06-01"
-        private const val MODEL = "claude-opus-4-8"
+        private const val MODEL = "claude-haiku-4-5-20251001"
         private val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }

@@ -1,9 +1,11 @@
 package com.textoverlay.assistant
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -28,6 +30,10 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { refresh() }
 
+    private val requestDefault = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { refresh() }
+
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) = refresh()
     }
@@ -43,7 +49,7 @@ class MainActivity : AppCompatActivity() {
         binding.list.adapter = adapter
 
         binding.fab.setOnClickListener { openThread(-1L, null) }
-        binding.bannerButton.setOnClickListener { ensurePermissions() }
+        binding.bannerButton.setOnClickListener { fixSetup() }
         binding.settingsButton.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
@@ -53,38 +59,70 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (canReadSms()) {
-            contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
-        }
+        contentResolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
         refresh()
     }
 
     override fun onPause() {
         super.onPause()
-        runCatching { contentResolver.unregisterContentObserver(observer) }
+        contentResolver.unregisterContentObserver(observer)
     }
 
-    private fun canReadSms(): Boolean =
+    private fun isDefaultSmsApp(): Boolean =
+        Telephony.Sms.getDefaultSmsPackage(this) == packageName
+
+    private fun hasSmsPermissions(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) ==
             PackageManager.PERMISSION_GRANTED
 
     private fun ensurePermissions() {
-        val needed = listOf(Manifest.permission.READ_SMS, Manifest.permission.READ_CONTACTS)
-            .filter {
-                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        val needed = mutableListOf(
+            Manifest.permission.READ_SMS,
+            Manifest.permission.SEND_SMS,
+            Manifest.permission.RECEIVE_SMS,
+            Manifest.permission.READ_CONTACTS
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            needed += Manifest.permission.POST_NOTIFICATIONS
+        }
+        val toAsk = needed.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (toAsk.isNotEmpty()) requestPermissions.launch(toAsk.toTypedArray())
+    }
+
+    /** One button that walks the user through whatever is still missing. */
+    private fun fixSetup() {
+        if (!hasSmsPermissions()) {
+            ensurePermissions()
+            return
+        }
+        if (!isDefaultSmsApp()) requestDefaultSmsApp()
+    }
+
+    private fun requestDefaultSmsApp() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val rm = getSystemService(RoleManager::class.java)
+            if (rm != null && rm.isRoleAvailable(RoleManager.ROLE_SMS) && !rm.isRoleHeld(RoleManager.ROLE_SMS)) {
+                requestDefault.launch(rm.createRequestRoleIntent(RoleManager.ROLE_SMS))
+                return
             }
-        if (needed.isNotEmpty()) requestPermissions.launch(needed.toTypedArray())
+        }
+        @Suppress("DEPRECATION")
+        val intent = Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT)
+            .putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName)
+        requestDefault.launch(intent)
     }
 
     private fun refresh() {
-        // The banner only nudges for read access; sending always works via the
-        // phone's Messages app regardless.
-        binding.banner.visibility = if (canReadSms()) View.GONE else View.VISIBLE
-        binding.bannerButton.text = getString(R.string.grant_permissions)
-
-        if (!canReadSms()) {
+        val ready = isDefaultSmsApp() && hasSmsPermissions()
+        binding.banner.visibility = if (ready) View.GONE else View.VISIBLE
+        binding.bannerButton.text = getString(
+            if (!hasSmsPermissions()) R.string.grant_permissions else R.string.make_default_button
+        )
+        if (!hasSmsPermissions()) {
             adapter.submit(emptyList())
-            binding.empty.visibility = View.VISIBLE
+            binding.empty.visibility = View.GONE
             return
         }
         lifecycleScope.launch {

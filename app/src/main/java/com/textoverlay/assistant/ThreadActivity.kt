@@ -1,8 +1,6 @@
 package com.textoverlay.assistant
 
-import android.content.Intent
 import android.database.ContentObserver
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,20 +13,20 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.textoverlay.assistant.databinding.ActivityThreadBinding
 import kotlinx.coroutines.launch
 
-/**
- * A single conversation: shows the history, the Claude actions, and a compose
- * box. "Send" hands the message to the phone's default Messages app (prefilled),
- * so the app never needs the SMS-send permission that Samsung blocks.
- */
+/** A single SMS conversation: messages, compose box, and the Claude actions. */
 class ThreadActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityThreadBinding
     private lateinit var repo: SmsRepository
     private lateinit var claude: ClaudeClient
-    private val adapter = MessageAdapter()
+    private val adapter = MessageAdapter { onImageTapped(it) }
 
     private var threadId: Long = -1L
     private var address: String? = null
+
+    /** Messages we've sent this session. Shown even when we can't write them to
+     *  the provider (i.e. when we're not the default SMS app). */
+    private val locallySent = ArrayList<SmsMessage>()
 
     private val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
         override fun onChange(selfChange: Boolean) = reload()
@@ -48,16 +46,35 @@ class ThreadActivity : AppCompatActivity() {
         binding.list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         binding.list.adapter = adapter
 
-        threadId = intent.getLongExtra(EXTRA_THREAD_ID, -1L)
-        address = intent.getStringExtra(EXTRA_ADDRESS)
-        val newConversation = threadId <= 0 && address.isNullOrBlank()
-        binding.recipient.visibility = if (newConversation) View.VISIBLE else View.GONE
-        title = if (address.isNullOrBlank()) getString(R.string.new_message)
-        else repo.displayName(address!!)
+        resolveTarget()
 
         binding.sendButton.setOnClickListener { send() }
         binding.summarizeButton.setOnClickListener { runClaude(fillReply = false) }
         binding.suggestButton.setOnClickListener { runClaude(fillReply = true) }
+    }
+
+    /** Work out who this conversation is with, from the various launch intents. */
+    private fun resolveTarget() {
+        threadId = intent.getLongExtra(EXTRA_THREAD_ID, -1L)
+        address = intent.getStringExtra(EXTRA_ADDRESS)
+
+        if (address.isNullOrBlank()) {
+            // sms:/smsto: links arrive as data URIs.
+            intent.data?.let { uri ->
+                if (uri.scheme in setOf("sms", "smsto", "mms", "mmsto")) {
+                    address = uri.schemeSpecificPart?.substringBefore('?')
+                }
+            }
+        }
+        // A shared/prefilled body, if any.
+        intent.getStringExtra(android.content.Intent.EXTRA_TEXT)?.let {
+            if (it.isNotBlank()) binding.input.setText(it)
+        }
+
+        val newConversation = threadId <= 0 && address.isNullOrBlank()
+        binding.recipient.visibility = if (newConversation) View.VISIBLE else View.GONE
+        title = if (address.isNullOrBlank()) getString(R.string.new_message)
+        else repo.displayName(address!!)
     }
 
     override fun onResume() {
@@ -72,11 +89,21 @@ class ThreadActivity : AppCompatActivity() {
     }
 
     private fun reload() {
-        if (threadId <= 0) return
+        val addr = address
         lifecycleScope.launch {
-            val msgs = repo.loadMessages(threadId)
-            adapter.submit(msgs)
-            if (msgs.isNotEmpty()) binding.list.scrollToPosition(msgs.size - 1)
+            if (threadId <= 0 && !addr.isNullOrBlank()) {
+                threadId = repo.threadIdFor(addr)
+            }
+            val provider = if (threadId > 0) repo.loadMessages(threadId) else emptyList()
+            // Keep any locally-sent message that the provider doesn't already have.
+            val extras = locallySent.filter { ls ->
+                provider.none { !it.incoming && it.body == ls.body &&
+                    kotlin.math.abs(it.date - ls.date) < 60_000 }
+            }
+            val display = provider + extras
+            adapter.submit(display)
+            if (display.isNotEmpty()) binding.list.scrollToPosition(display.size - 1)
+            if (threadId > 0) repo.markThreadRead(threadId)
         }
     }
 
@@ -85,30 +112,37 @@ class ThreadActivity : AppCompatActivity() {
         return if (!typed.isNullOrBlank()) typed else address
     }
 
-    /** Hand the message to the default Messages app, prefilled and ready to send. */
     private fun send() {
         val body = binding.input.text?.toString()?.trim().orEmpty()
+        if (body.isEmpty()) return
         val addr = currentAddress()
         if (addr.isNullOrBlank()) {
             toast(getString(R.string.enter_recipient))
             return
         }
-        val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(addr)))
-            .putExtra("sms_body", body)
-        // Route straight to the system default Messages app when we know it.
-        Telephony.Sms.getDefaultSmsPackage(this)?.let { intent.setPackage(it) }
-        runCatching { startActivity(intent) }
-            .onSuccess { binding.input.setText("") }
-            .onFailure {
-                // Fall back to letting the user pick an app.
-                runCatching {
-                    startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:" + Uri.encode(addr)))
-                        .putExtra("sms_body", body))
-                }.onFailure { toast(getString(R.string.no_messaging_app)) }
-            }
+        address = addr
+        lifecycleScope.launch {
+            // Sending only needs the SEND_SMS permission — not default-app status.
+            // When we're not the default app the OS won't let us persist the
+            // message to the Sent box, so we show it optimistically instead.
+            runCatching { repo.sendMessage(addr, body) }
+                .onSuccess {
+                    binding.input.setText("")
+                    binding.recipient.visibility = View.GONE
+                    title = repo.displayName(addr)
+                    locallySent.add(SmsMessage(body, System.currentTimeMillis(), incoming = false))
+                    reload()
+                }
+                .onFailure { toast(it.message ?: "Couldn't send message.") }
+        }
     }
 
     private fun runClaude(fillReply: Boolean) {
+        val addr = currentAddress()
+        if (addr.isNullOrBlank()) {
+            toast(getString(R.string.enter_recipient))
+            return
+        }
         if (!SettingsStore(this).hasApiKey) {
             toast(getString(R.string.no_api_key_short))
             return
@@ -116,13 +150,13 @@ class ThreadActivity : AppCompatActivity() {
         setBusy(true)
         lifecycleScope.launch {
             val transcript = buildTranscript()
-            if (transcript.isBlank()) {
+            val images = threadImages()
+            if (transcript.isBlank() && images.isEmpty()) {
                 setBusy(false)
                 toast(getString(R.string.no_history))
                 return@launch
             }
-            val name = currentAddress()?.let { repo.displayName(it) } ?: "them"
-            runCatching { claude.analyze(name, transcript) }
+            runCatching { claude.analyze(repo.displayName(addr), transcript, images) }
                 .onSuccess { suggestion ->
                     setBusy(false)
                     if (fillReply) {
@@ -142,13 +176,52 @@ class ThreadActivity : AppCompatActivity() {
     private suspend fun buildTranscript(): String {
         if (threadId <= 0) return ""
         val msgs = repo.loadMessages(threadId)
-        return msgs.joinToString("\n") { (if (it.incoming) "Them: " else "Me: ") + it.body }
+        return msgs.filter { it.body.isNotBlank() || it.imageUri != null }
+            .joinToString("\n") {
+                val who = if (it.incoming) "Them: " else "Me: "
+                who + it.body.ifBlank { "[sent a picture]" }
+            }
     }
 
-    private fun showSummary(summary: String) {
+    /** The most recent pictures in this thread, for Claude to look at. */
+    private suspend fun threadImages(): List<ClaudeImage> {
+        if (threadId <= 0) return emptyList()
+        return repo.loadMessages(threadId)
+            .filter { it.imageUri != null }
+            .takeLast(3)
+            .mapNotNull { m ->
+                repo.loadImageBytes(m.imageUri!!)
+                    ?.let { ClaudeImage(m.imageType ?: "image/jpeg", it) }
+            }
+    }
+
+    /** Tap an image bubble → ask Claude what's in the picture. */
+    private fun onImageTapped(item: SmsMessage) {
+        val uri = item.imageUri ?: return
+        if (!SettingsStore(this).hasApiKey) {
+            toast(getString(R.string.no_api_key_short))
+            return
+        }
+        setBusy(true)
+        lifecycleScope.launch {
+            val bytes = repo.loadImageBytes(uri)
+            if (bytes == null) {
+                setBusy(false)
+                toast(getString(R.string.cant_read_image))
+                return@launch
+            }
+            runCatching { claude.describeImage(ClaudeImage(item.imageType ?: "image/jpeg", bytes)) }
+                .onSuccess { setBusy(false); showInfo(R.string.picture_title, it) }
+                .onFailure { setBusy(false); toast(it.message ?: "Couldn't reach Claude.") }
+        }
+    }
+
+    private fun showSummary(summary: String) = showInfo(R.string.summary_title, summary)
+
+    private fun showInfo(titleRes: Int, message: String) {
         AlertDialog.Builder(this)
-            .setTitle(R.string.summary_title)
-            .setMessage(summary)
+            .setTitle(titleRes)
+            .setMessage(message)
             .setPositiveButton(R.string.ok, null)
             .show()
     }

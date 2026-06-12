@@ -5,26 +5,31 @@
     <!-- Conversation list -->
     <string name="conversations">Messages</string>
     <string name="new_message">New message</string>
-    <string name="no_conversations">No conversations to show.\nTap + to start a message, or allow SMS access to see your threads.</string>
+    <string name="no_conversations">No conversations yet.\nTap + to start texting.</string>
     <string name="settings">Settings</string>
 
-    <!-- Read-access banner -->
-    <string name="make_default_body">Allow SMS &amp; contacts access to show your conversations here. Sending always goes through your phone\'s Messages app.</string>
+    <!-- Default-SMS banner -->
+    <string name="make_default_title">Set AI Messages as your texting app</string>
+    <string name="make_default_body">Texting and AI replies work now. Optionally make AI Messages your default SMS app for instant incoming alerts and saved sent history.</string>
+    <string name="make_default_button">Make default</string>
     <string name="grant_permissions">Allow SMS &amp; contacts</string>
 
     <!-- Thread -->
     <string name="recipient_hint">Phone number</string>
     <string name="message_hint">Text message</string>
-    <string name="send">Send ›</string>
+    <string name="send">Send</string>
     <string name="summarize">Summarize</string>
     <string name="suggest_reply">Suggest reply</string>
     <string name="thinking">Thinking…</string>
     <string name="summary_title">Summary</string>
+    <string name="picture_title">Picture</string>
+    <string name="picture">Picture message</string>
     <string name="ok">OK</string>
     <string name="no_api_key_short">Add your Claude API key in Settings first.</string>
+    <string name="no_history">Open a conversation with messages to use this.</string>
+    <string name="cant_read_image">Couldn\'t read that image.</string>
     <string name="enter_recipient">Enter a phone number first.</string>
-    <string name="no_history">Open a conversation with history to use this.</string>
-    <string name="no_messaging_app">No Messages app found to send with.</string>
+    <string name="not_default_warning">AI Messages isn\'t your default SMS app, so messages can\'t be sent. Open the app to fix this.</string>
 
     <!-- Settings -->
     <string name="api_key_label">Claude API key</string>

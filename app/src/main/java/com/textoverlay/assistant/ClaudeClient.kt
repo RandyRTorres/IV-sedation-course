@@ -1,5 +1,6 @@
 package com.textoverlay.assistant
 
+import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,11 +18,15 @@ data class Suggestion(
     val suggestedReply: String
 )
 
+/** An image to send to Claude's vision model. */
+data class ClaudeImage(
+    val mediaType: String,
+    val bytes: ByteArray
+)
+
 /**
- * Thin wrapper over the Claude Messages API (POST /v1/messages).
- *
- * Uses structured outputs so we get back a clean {summary, suggested_reply}
- * JSON object instead of free-form prose we'd have to parse.
+ * Thin wrapper over the Claude Messages API (POST /v1/messages), with vision
+ * support so Claude can read picture (MMS) messages.
  */
 class ClaudeClient(private val settings: SettingsStore) {
 
@@ -32,33 +37,40 @@ class ClaudeClient(private val settings: SettingsStore) {
 
     /**
      * Summarize a conversation with [contactName] and propose my next reply.
-     * [transcript] is the conversation rendered as alternating "Them:" / "Me:"
-     * lines, oldest first. Runs on the IO dispatcher.
+     * [transcript] is the conversation rendered as "Them:" / "Me:" lines, and
+     * [images] are any pictures from the thread that Claude should look at.
      */
-    suspend fun analyze(contactName: String, transcript: String): Suggestion =
-        withContext(Dispatchers.IO) {
-            val apiKey = settings.apiKey
-            check(apiKey.isNotBlank()) { "No API key set. Add your Claude API key in Settings." }
+    suspend fun analyze(
+        contactName: String,
+        transcript: String,
+        images: List<ClaudeImage> = emptyList()
+    ): Suggestion = withContext(Dispatchers.IO) {
+        val apiKey = requireKey()
 
-            val body = buildRequestBody(contactName, transcript, settings.tone)
-            val request = Request.Builder()
-                .url(ENDPOINT)
-                .addHeader("x-api-key", apiKey)
-                .addHeader("anthropic-version", ANTHROPIC_VERSION)
-                .addHeader("content-type", "application/json")
-                .post(body.toString().toRequestBody(JSON))
-                .build()
-
-            http.newCall(request).execute().use { response ->
-                val raw = response.body?.string().orEmpty()
-                if (!response.isSuccessful) {
-                    throw IOException(humanError(response.code, raw))
-                }
-                parseSuggestion(raw)
+        val userText = buildString {
+            append("Here is a text-message conversation between me and ")
+            append(contactName)
+            append(". \"Them:\" is ").append(contactName)
+            append(", \"Me:\" is me.\n\n")
+            append(transcript)
+            if (images.isNotEmpty()) {
+                append("\n\nThe conversation includes ")
+                append(if (images.size == 1) "an image" else "${images.size} images")
+                append(" (attached). Take ")
+                append(if (images.size == 1) "it" else "them")
+                append(" into account.")
             }
+            append("\n\nDo two things:\n")
+            append("1. summary: one or two sentences capturing where the conversation stands, what's in any image, and what (if anything) they want from me.\n")
+            append("2. suggested_reply: a ready-to-send next message I could send back, written in a ")
+            append(settings.tone)
+            append(" tone, in the first person as me. No preamble, just the reply text.")
         }
 
-    private fun buildRequestBody(contactName: String, transcript: String, tone: String): JSONObject {
+        val content = JSONArray()
+        images.forEach { content.put(imageBlock(it)) }
+        content.put(JSONObject().put("type", "text").put("text", userText))
+
         val schema = JSONObject()
             .put("type", "object")
             .put(
@@ -69,59 +81,88 @@ class ClaudeClient(private val settings: SettingsStore) {
             .put("required", JSONArray().put("summary").put("suggested_reply"))
             .put("additionalProperties", false)
 
-        val userText = buildString {
-            append("Here is a text-message conversation between me and ")
-            append(contactName)
-            append(". \"Them:\" is ").append(contactName)
-            append(", \"Me:\" is me.\n\n")
-            append(transcript)
-            append("\n\nDo two things:\n")
-            append("1. summary: one or two sentences capturing where the conversation stands and what (if anything) they want from me.\n")
-            append("2. suggested_reply: a ready-to-send next message I could send back, written in a ")
-            append(tone)
-            append(" tone, in the first person as me. No preamble, just the reply text.")
-        }
-
-        return JSONObject()
+        val body = JSONObject()
             .put("model", MODEL)
             .put("max_tokens", 1024)
             .put(
                 "output_config", JSONObject().put(
-                    "format", JSONObject()
-                        .put("type", "json_schema")
-                        .put("schema", schema)
+                    "format", JSONObject().put("type", "json_schema").put("schema", schema)
                 )
             )
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+
+        val raw = post(apiKey, body)
+        parseSuggestion(raw)
+    }
+
+    /** Describe a single picture in a sentence or two (plain text). */
+    suspend fun describeImage(image: ClaudeImage): String = withContext(Dispatchers.IO) {
+        val apiKey = requireKey()
+        val content = JSONArray()
+            .put(imageBlock(image))
             .put(
-                "messages", JSONArray().put(
-                    JSONObject()
-                        .put("role", "user")
-                        .put("content", userText)
-                )
+                JSONObject().put("type", "text")
+                    .put("text", "Describe what's in this picture in one to three sentences.")
             )
+        val body = JSONObject()
+            .put("model", MODEL)
+            .put("max_tokens", 512)
+            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", content)))
+        firstText(post(apiKey, body)).ifBlank { "(no description)" }
+    }
+
+    private fun imageBlock(image: ClaudeImage): JSONObject =
+        JSONObject().put("type", "image").put(
+            "source", JSONObject()
+                .put("type", "base64")
+                .put("media_type", normalizeType(image.mediaType))
+                .put("data", Base64.encodeToString(image.bytes, Base64.NO_WRAP))
+        )
+
+    private fun normalizeType(ct: String): String = when {
+        ct.contains("png") -> "image/png"
+        ct.contains("gif") -> "image/gif"
+        ct.contains("webp") -> "image/webp"
+        else -> "image/jpeg"
+    }
+
+    private fun requireKey(): String {
+        val apiKey = settings.apiKey
+        check(apiKey.isNotBlank()) { "No API key set. Add your Claude API key in Settings." }
+        return apiKey
+    }
+
+    private fun post(apiKey: String, body: JSONObject): String {
+        val request = Request.Builder()
+            .url(ENDPOINT)
+            .addHeader("x-api-key", apiKey)
+            .addHeader("anthropic-version", ANTHROPIC_VERSION)
+            .addHeader("content-type", "application/json")
+            .post(body.toString().toRequestBody(JSON))
+            .build()
+        http.newCall(request).execute().use { response ->
+            val raw = response.body?.string().orEmpty()
+            if (!response.isSuccessful) throw IOException(humanError(response.code, raw))
+            return raw
+        }
+    }
+
+    private fun firstText(raw: String): String {
+        val root = JSONObject(raw)
+        if (root.optString("stop_reason") == "refusal") {
+            throw IllegalStateException("Claude declined to respond.")
+        }
+        val content = root.optJSONArray("content") ?: return ""
+        for (i in 0 until content.length()) {
+            val block = content.getJSONObject(i)
+            if (block.optString("type") == "text") return block.optString("text")
+        }
+        return ""
     }
 
     private fun parseSuggestion(raw: String): Suggestion {
-        val root = JSONObject(raw)
-
-        // A safety refusal returns HTTP 200 with stop_reason "refusal".
-        if (root.optString("stop_reason") == "refusal") {
-            throw IllegalStateException("Claude declined to respond to this conversation.")
-        }
-
-        val content = root.optJSONArray("content")
-            ?: throw IllegalStateException("Unexpected response from Claude.")
-
-        // With output_config.format the first text block is guaranteed valid JSON.
-        var text: String? = null
-        for (i in 0 until content.length()) {
-            val block = content.getJSONObject(i)
-            if (block.optString("type") == "text") {
-                text = block.optString("text")
-                break
-            }
-        }
-        val payload = text ?: throw IllegalStateException("Claude returned no text.")
+        val payload = firstText(raw)
+        if (payload.isBlank()) throw IllegalStateException("Claude returned no text.")
         val parsed = JSONObject(payload)
         return Suggestion(
             summary = parsed.optString("summary").ifBlank { "(no summary)" },

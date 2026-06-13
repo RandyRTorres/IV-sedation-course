@@ -46,10 +46,16 @@ class SettingsStore(context: Context) {
     fun archive(threadId: Long) { archivedThreads = archivedThreads + threadId }
     fun unarchive(threadId: Long) { archivedThreads = archivedThreads - threadId }
 
+    /** Pinch-to-zoom multiplier for chat text size. */
+    var chatTextScale: Float
+        get() = prefs.getFloat(KEY_TEXT_SCALE, 1f)
+        set(value) = prefs.edit().putFloat(KEY_TEXT_SCALE, value).apply()
+
     companion object {
         private const val KEY_API = "claude_api_key"
         private const val KEY_TONE = "reply_tone"
         private const val KEY_ARCHIVED = "archived_threads"
+        private const val KEY_TEXT_SCALE = "chat_text_scale"
         const val DEFAULT_TONE = "friendly and concise"
     }
 }

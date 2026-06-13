@@ -13,6 +13,8 @@ import android.os.Looper
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import android.widget.BaseAdapter
 import android.widget.GridView
@@ -28,6 +30,7 @@ import androidx.core.view.ViewCompat
 import java.io.File
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import com.textoverlay.assistant.databinding.ActivityThreadBinding
 import kotlinx.coroutines.launch
 
@@ -45,6 +48,21 @@ class ThreadActivity : AppCompatActivity() {
 
     /** A photo/GIF the user picked but hasn't sent yet. */
     private var pendingAttachment: Uri? = null
+
+    /** Pinch-to-zoom text size for the chat. */
+    private var textScale = 1f
+    private val scaleDetector by lazy {
+        ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(d: ScaleGestureDetector): Boolean {
+                textScale = (textScale * d.scaleFactor).coerceIn(0.8f, 2.5f)
+                adapter.textScale = textScale
+                return true
+            }
+            override fun onScaleEnd(d: ScaleGestureDetector) {
+                SettingsStore(this@ThreadActivity).chatTextScale = textScale
+            }
+        })
+    }
 
     /** Photo/GIF picker (modern Android photo picker). */
     private val pickMedia = registerForActivityResult(
@@ -150,6 +168,20 @@ class ThreadActivity : AppCompatActivity() {
 
         binding.list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
         binding.list.adapter = adapter
+
+        // Pinch-to-zoom the chat text size (persisted).
+        textScale = SettingsStore(this).chatTextScale
+        adapter.textScale = textScale
+        binding.list.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                scaleDetector.onTouchEvent(e)
+                return scaleDetector.isInProgress
+            }
+            override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
+                scaleDetector.onTouchEvent(e)
+            }
+            override fun onRequestDisallowInterceptTouchEvent(disallow: Boolean) {}
+        })
 
         resolveTarget()
 

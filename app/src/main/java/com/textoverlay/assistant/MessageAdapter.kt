@@ -21,6 +21,13 @@ class MessageAdapter(
 
     private val items = ArrayList<SmsMessage>()
 
+    /** Multiplier applied to message text size (pinch-to-zoom). */
+    var textScale: Float = 1f
+        set(value) {
+            field = value
+            notifyDataSetChanged()
+        }
+
     fun submit(newItems: List<SmsMessage>) {
         items.clear()
         items.addAll(newItems)
@@ -47,6 +54,7 @@ class MessageAdapter(
             } else {
                 binding.text.visibility = View.VISIBLE
                 binding.text.text = item.body
+                binding.text.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 16f * textScale)
             }
 
             // Image / video portion (MMS)

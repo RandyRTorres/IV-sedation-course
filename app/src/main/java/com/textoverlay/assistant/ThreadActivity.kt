@@ -23,7 +23,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
+import java.io.File
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.textoverlay.assistant.databinding.ActivityThreadBinding
@@ -48,6 +50,17 @@ class ThreadActivity : AppCompatActivity() {
     private val pickMedia = registerForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri -> uri?.let { setAttachment(it) } }
+
+    /** Where the camera writes a freshly captured photo/video. */
+    private var cameraUri: Uri? = null
+
+    private val takePhoto = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { ok -> if (ok) cameraUri?.let { setAttachment(it) } }
+
+    private val captureVideo = registerForActivityResult(
+        ActivityResultContracts.CaptureVideo()
+    ) { ok -> if (ok) cameraUri?.let { setAttachment(it) } }
 
     /** Contact picker for sharing a contact into the message body. */
     private val pickContactShare = registerForActivityResult(
@@ -185,7 +198,12 @@ class ThreadActivity : AppCompatActivity() {
     private fun showAttachMenu() {
         AlertDialog.Builder(this)
             .setItems(
-                arrayOf(getString(R.string.attach_photo), getString(R.string.attach_contact))
+                arrayOf(
+                    getString(R.string.attach_photo),
+                    getString(R.string.take_photo),
+                    getString(R.string.record_video),
+                    getString(R.string.attach_contact)
+                )
             ) { _, which ->
                 when (which) {
                     0 -> pickMedia.launch(
@@ -193,7 +211,9 @@ class ThreadActivity : AppCompatActivity() {
                             .setMediaType(ActivityResultContracts.PickVisualMedia.ImageOnly)
                             .build()
                     )
-                    1 -> runCatching {
+                    1 -> launchCamera(video = false)
+                    2 -> launchCamera(video = true)
+                    3 -> runCatching {
                         pickContactShare.launch(
                             Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI)
                         )
@@ -203,10 +223,26 @@ class ThreadActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Capture a photo or video with the camera app into a shared file. */
+    private fun launchCamera(video: Boolean) {
+        runCatching {
+            val ext = if (video) "mp4" else "jpg"
+            val file = File(cacheDir, "cam_${System.currentTimeMillis()}.$ext")
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            cameraUri = uri
+            if (video) captureVideo.launch(uri) else takePhoto.launch(uri)
+        }.onFailure { toast(it.message ?: "Camera unavailable.") }
+    }
+
     private fun setAttachment(uri: Uri) {
         pendingAttachment = uri
         binding.attachmentPreview.visibility = View.VISIBLE
-        runCatching { binding.attachmentThumb.setImageURI(uri) }
+        val type = contentResolver.getType(uri).orEmpty()
+        if (type.startsWith("video/")) {
+            binding.attachmentThumb.setImageResource(R.drawable.ic_videocam)
+        } else {
+            runCatching { binding.attachmentThumb.setImageURI(uri) }
+        }
     }
 
     private fun clearAttachment() {

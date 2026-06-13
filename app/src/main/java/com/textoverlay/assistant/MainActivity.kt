@@ -24,7 +24,12 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var repo: SmsRepository
-    private val adapter = ConversationAdapter { openThread(it.threadId, it.address) }
+    private val settings by lazy { SettingsStore(this) }
+    private var showingArchived = false
+    private val adapter = ConversationAdapter(
+        onClick = { openThread(it.threadId, it.address) },
+        onLongClick = { showConversationMenu(it) }
+    )
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -143,10 +148,69 @@ class MainActivity : AppCompatActivity() {
             return
         }
         lifecycleScope.launch {
-            val items = repo.loadConversations()
+            val archived = settings.archivedThreads
+            val items = repo.loadConversations().filter {
+                if (showingArchived) it.threadId in archived else it.threadId !in archived
+            }
             adapter.submit(items)
             binding.empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         }
+    }
+
+    /** Long-press a conversation → archive/unarchive or delete it. */
+    private fun showConversationMenu(conv: Conversation) {
+        val archiveLabel = if (showingArchived) R.string.unarchive else R.string.archive
+        AlertDialog.Builder(this)
+            .setTitle(conv.displayName)
+            .setItems(arrayOf(getString(archiveLabel), getString(R.string.delete))) { _, which ->
+                when (which) {
+                    0 -> {
+                        if (showingArchived) settings.unarchive(conv.threadId)
+                        else settings.archive(conv.threadId)
+                        refresh()
+                    }
+                    1 -> confirmDelete(conv)
+                }
+            }
+            .show()
+    }
+
+    private fun confirmDelete(conv: Conversation) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.delete_thread_title)
+            .setMessage(getString(R.string.delete_thread_body, conv.displayName))
+            .setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(R.string.delete) { _, _ ->
+                lifecycleScope.launch {
+                    repo.deleteThread(conv.threadId)
+                    settings.unarchive(conv.threadId)
+                    refresh()
+                }
+            }
+            .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: android.view.Menu): Boolean {
+        menu.findItem(R.id.action_archived)?.setTitle(
+            if (showingArchived) R.string.show_all else R.string.archived
+        )
+        return super.onPrepareOptionsMenu(menu)
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        if (item.itemId == R.id.action_archived) {
+            showingArchived = !showingArchived
+            binding.toolbar.title = getString(if (showingArchived) R.string.archived else R.string.conversations)
+            invalidateOptionsMenu()
+            refresh()
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     private fun openThread(threadId: Long, address: String?) {

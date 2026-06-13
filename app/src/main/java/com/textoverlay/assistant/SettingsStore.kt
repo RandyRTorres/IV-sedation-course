@@ -36,9 +36,20 @@ class SettingsStore(context: Context) {
 
     val hasApiKey: Boolean get() = apiKey.isNotBlank()
 
+    /** Thread ids the user has archived (hidden from the main list). */
+    var archivedThreads: Set<Long>
+        get() = prefs.getStringSet(KEY_ARCHIVED, emptySet())
+            ?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+        private set(value) = prefs.edit()
+            .putStringSet(KEY_ARCHIVED, value.map { it.toString() }.toSet()).apply()
+
+    fun archive(threadId: Long) { archivedThreads = archivedThreads + threadId }
+    fun unarchive(threadId: Long) { archivedThreads = archivedThreads - threadId }
+
     companion object {
         private const val KEY_API = "claude_api_key"
         private const val KEY_TONE = "reply_tone"
+        private const val KEY_ARCHIVED = "archived_threads"
         const val DEFAULT_TONE = "friendly and concise"
     }
 }

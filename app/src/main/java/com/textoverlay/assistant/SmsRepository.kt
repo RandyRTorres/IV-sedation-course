@@ -205,6 +205,23 @@ class SmsRepository(private val context: Context) {
         )
     }
 
+    /** Delete an entire conversation (SMS + MMS). Requires being the default app. */
+    suspend fun deleteThread(threadId: Long) = withContext(Dispatchers.IO) {
+        runCatching {
+            resolver.delete(Uri.parse("content://mms-sms/conversations/$threadId"), null, null)
+        }
+        runCatching {
+            resolver.delete(
+                Telephony.Sms.CONTENT_URI,
+                "${Telephony.Sms.THREAD_ID} = ?", arrayOf(threadId.toString())
+            )
+        }
+        runCatching {
+            resolver.delete(Telephony.Mms.CONTENT_URI, "thread_id = ?", arrayOf(threadId.toString()))
+        }
+        Unit
+    }
+
     /** Mark every message in a thread as read. */
     suspend fun markThreadRead(threadId: Long) = withContext(Dispatchers.IO) {
         val values = ContentValues().apply { put(Telephony.Sms.READ, 1) }
@@ -267,6 +284,7 @@ class SmsRepository(private val context: Context) {
             val mime = resolver.getType(uri) ?: "image/jpeg"
             val raw = resolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching null
             if (mime == "image/gif") return@runCatching raw to "image/gif"
+            if (mime.startsWith("video/")) return@runCatching raw to mime
             val bmp = android.graphics.BitmapFactory.decodeByteArray(raw, 0, raw.size)
                 ?: return@runCatching raw to mime
             val scaled = downscale(bmp, 1024)
@@ -278,7 +296,11 @@ class SmsRepository(private val context: Context) {
 
     /** Persist attachment bytes to a cache file; returns a uri string for display. */
     fun cacheAttachment(bytes: ByteArray, mime: String): String {
-        val ext = if (mime == "image/gif") "gif" else "jpg"
+        val ext = when {
+            mime == "image/gif" -> "gif"
+            mime.startsWith("video/") -> "mp4"
+            else -> "jpg"
+        }
         val f = java.io.File(context.cacheDir, "sent_${System.currentTimeMillis()}.$ext")
         f.writeBytes(bytes)
         return Uri.fromFile(f).toString()

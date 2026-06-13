@@ -45,10 +45,14 @@ class MessageAdapter(
                 binding.text.text = item.body
             }
 
-            // Image portion (MMS)
+            // Image / video portion (MMS)
             if (item.imageUri != null) {
                 binding.image.visibility = View.VISIBLE
-                runCatching { binding.image.setImageURI(Uri.parse(item.imageUri)) }
+                if (item.imageType?.startsWith("video/") == true) {
+                    binding.image.setImageResource(R.drawable.ic_videocam)
+                } else {
+                    runCatching { binding.image.setImageURI(Uri.parse(item.imageUri)) }
+                }
                 binding.image.setOnClickListener { onImageClick(item) }
             } else {
                 binding.image.visibility = View.GONE

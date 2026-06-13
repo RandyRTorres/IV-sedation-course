@@ -7,6 +7,16 @@
     <string name="new_message">New message</string>
     <string name="no_conversations">No conversations yet.\nTap + to start texting.</string>
     <string name="settings">Settings</string>
+    <string name="archive">Archive</string>
+    <string name="unarchive">Unarchive</string>
+    <string name="archived">Archived</string>
+    <string name="show_all">Show all</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete_thread_title">Delete conversation?</string>
+    <string name="delete_thread_body">This permanently deletes your conversation with %1$s.</string>
+    <string name="take_photo">Take photo</string>
+    <string name="record_video">Record video</string>
 
     <!-- Default-SMS banner -->
     <string name="make_default_title">Set AI Messages as your texting app</string>

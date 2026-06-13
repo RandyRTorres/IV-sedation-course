@@ -8,7 +8,8 @@ import com.textoverlay.assistant.databinding.ItemConversationBinding
 
 /** Renders the list of SMS threads. */
 class ConversationAdapter(
-    private val onClick: (Conversation) -> Unit
+    private val onClick: (Conversation) -> Unit,
+    private val onLongClick: (Conversation) -> Unit = {}
 ) : RecyclerView.Adapter<ConversationAdapter.VH>() {
 
     private val items = ArrayList<Conversation>()
@@ -47,6 +48,7 @@ class ConversationAdapter(
                 else android.graphics.Typeface.NORMAL
             )
             binding.root.setOnClickListener { onClick(item) }
+            binding.root.setOnLongClickListener { onLongClick(item); true }
         }
     }
 

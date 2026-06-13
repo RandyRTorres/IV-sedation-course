@@ -37,6 +37,7 @@
     <string name="summarizing">Summarizing new messages…</string>
     <string name="reply">Reply</string>
     <string name="sent">Sent</string>
+    <string name="copied">Copied</string>
     <string name="attach">Attach</string>
     <string name="emoji">Emoji</string>
     <string name="attach_photo">Photo or GIF</string>

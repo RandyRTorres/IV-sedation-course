@@ -1,16 +1,20 @@
 package com.textoverlay.assistant
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.net.Uri
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.Toast
 import androidx.recyclerview.widget.RecyclerView
 import com.textoverlay.assistant.databinding.ItemMessageBinding
 
 /** Renders messages in a thread, aligning received vs. sent bubbles and showing
- *  any MMS image. Tapping an image asks Claude to describe it. */
+ *  any MMS image. Tap an image to open it; long-press a bubble to copy its text. */
 class MessageAdapter(
     private val onImageClick: (SmsMessage) -> Unit = {}
 ) : RecyclerView.Adapter<MessageAdapter.VH>() {
@@ -72,6 +76,18 @@ class MessageAdapter(
                 binding.text.setTextColor(0xFFFFFFFF.toInt())
             }
             binding.bubble.layoutParams = params
+
+            // Long-press a bubble to copy its text.
+            binding.bubble.setOnLongClickListener {
+                if (item.body.isNotBlank()) copyToClipboard(binding.root.context, item.body)
+                true
+            }
         }
+    }
+
+    private fun copyToClipboard(context: Context, text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("message", text))
+        Toast.makeText(context, context.getString(R.string.copied), Toast.LENGTH_SHORT).show()
     }
 }

@@ -63,16 +63,22 @@ class SmsRepository(private val context: Context) {
         out
     }
 
-    /** All messages in a thread (SMS + MMS images), oldest first. */
-    suspend fun loadMessages(threadId: Long): List<SmsMessage> = withContext(Dispatchers.IO) {
-        val all = ArrayList<SmsMessage>()
-        all += loadSms(threadId)
-        all += loadMms(threadId)
-        all.sortBy { it.date }
-        all
-    }
+    /**
+     * The most recent [limit] messages in a thread (SMS + MMS images), oldest
+     * first. Capping keeps long histories fast to open.
+     */
+    suspend fun loadMessages(threadId: Long, limit: Int = 400): List<SmsMessage> =
+        withContext(Dispatchers.IO) {
+            val all = ArrayList<SmsMessage>()
+            all += loadSms(threadId, limit)
+            all += loadMms(threadId, "thread_id = ?", arrayOf(threadId.toString()), limit)
+            all.sortBy { it.date }
+            // Keep only the newest `limit` after merging SMS + MMS.
+            if (all.size > limit) all.subList(0, all.size - limit).clear()
+            all
+        }
 
-    private fun loadSms(threadId: Long): List<SmsMessage> {
+    private fun loadSms(threadId: Long, limit: Int): List<SmsMessage> {
         val out = ArrayList<SmsMessage>()
         val projection = arrayOf(
             Telephony.Sms.BODY,
@@ -84,7 +90,7 @@ class SmsRepository(private val context: Context) {
             projection,
             "${Telephony.Sms.THREAD_ID} = ?",
             arrayOf(threadId.toString()),
-            "${Telephony.Sms.DATE} ASC"
+            "${Telephony.Sms.DATE} DESC LIMIT $limit"
         )?.use { c ->
             val bodyIdx = c.getColumnIndexOrThrow(Telephony.Sms.BODY)
             val dateIdx = c.getColumnIndexOrThrow(Telephony.Sms.DATE)
@@ -102,14 +108,15 @@ class SmsRepository(private val context: Context) {
 
     /** Read MMS messages in a thread, extracting any text body and image part. */
     private fun loadMms(threadId: Long, selection: String = "thread_id = ?",
-                        args: Array<String> = arrayOf(threadId.toString())): List<SmsMessage> {
+                        args: Array<String> = arrayOf(threadId.toString()),
+                        limit: Int = 400): List<SmsMessage> {
         val out = ArrayList<SmsMessage>()
         resolver.query(
             Telephony.Mms.CONTENT_URI,
             arrayOf("_id", "date", "msg_box"),
             selection,
             args,
-            "date ASC"
+            "date DESC LIMIT $limit"
         )?.use { c ->
             val idIdx = c.getColumnIndexOrThrow("_id")
             val dateIdx = c.getColumnIndexOrThrow("date")

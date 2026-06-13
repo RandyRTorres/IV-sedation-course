@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/ios_bg"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/ios_nav"
+        app:navigationIcon="@drawable/ic_back"
+        app:titleCentered="true"
+        app:titleTextAppearance="@style/NavTitle"
+        app:titleTextColor="@color/ios_primary_text" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/ios_separator" />
+
+    <LinearLayout
+        android:id="@+id/recipient_row"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="8dp"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/to_label"
+            android:textColor="@color/ios_secondary_text"
+            android:textSize="16sp" />
+
+        <AutoCompleteTextView
+            android:id="@+id/recipient"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:completionThreshold="1"
+            android:hint="@string/recipient_hint"
+            android:importantForAutofill="no"
+            android:inputType="textPersonName"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="12dp"
+            android:textColor="@color/ios_primary_text"
+            android:textColorHint="@color/ios_secondary_text" />
+
+        <ImageButton
+            android:id="@+id/contacts_button"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/pick_contact"
+            android:src="@drawable/ic_contact" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/recipient_divider"
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/ios_separator"
+        android:visibility="gone" />
+
+    <!-- AI summary of unread messages, shown on open. Tap to dismiss. -->
+    <LinearLayout
+        android:id="@+id/summary_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#EAF3FF"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="14dp"
+        android:paddingVertical="10dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="10dp"
+            android:contentDescription="@string/summary_title"
+            android:src="@drawable/ic_sparkle" />
+
+        <TextView
+            android:id="@+id/summary_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#0B3D73"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:clipToPadding="false"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="8dp"
+        android:scrollbars="none" />
+
+    <ProgressBar
+        android:id="@+id/progress"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="4dp"
+        android:visibility="gone" />
+
+    <!-- Claude actions -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingHorizontal="10dp"
+        android:paddingTop="4dp">
+
+        <TextView
+            android:id="@+id/summarize_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/chip_bg"
+            android:drawablePadding="4dp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/summarize"
+            android:textColor="@color/ios_blue"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/suggest_button"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/chip_bg"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="@string/suggest_reply"
+            android:textColor="@color/ios_blue"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:layout_marginTop="6dp"
+        android:background="@color/ios_separator" />
+
+    <!-- Selected attachment preview -->
+    <FrameLayout
+        android:id="@+id/attachment_preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="8dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/attachment_thumb"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:layout_margin="6dp"
+            android:contentDescription="@string/picture"
+            android:scaleType="centerCrop" />
+
+        <ImageButton
+            android:id="@+id/attachment_remove"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
+            android:layout_gravity="top|end"
+            android:background="@drawable/remove_badge"
+            android:contentDescription="@string/ok"
+            android:padding="3dp"
+            android:src="@drawable/ic_close"
+            app:tint="@android:color/white" />
+    </FrameLayout>
+
+    <!-- Compose row -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/ios_bg"
+        android:gravity="bottom"
+        android:orientation="horizontal"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="8dp">
+
+        <ImageButton
+            android:id="@+id/plus_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/attach"
+            android:src="@drawable/ic_add" />
+
+        <ImageButton
+            android:id="@+id/emoji_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/emoji"
+            android:src="@drawable/ic_emoji" />
+
+        <EditText
+            android:id="@+id/input"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/input_pill"
+            android:hint="@string/message_hint"
+            android:importantForAutofill="no"
+            android:inputType="textMultiLine|textCapSentences"
+            android:maxLines="5"
+            android:minHeight="40dp"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="9dp"
+            android:textColor="@color/ios_primary_text"
+            android:textColorHint="@color/ios_secondary_text"
+            android:textSize="16sp" />
+
+        <ImageButton
+            android:id="@+id/send_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/send_button_bg"
+            android:contentDescription="@string/send"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_send_arrow" />
+    </LinearLayout>
+</LinearLayout>

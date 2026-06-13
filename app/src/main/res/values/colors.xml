@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- iOS-inspired palette -->
+    <color name="brand">#0A84FF</color>
+    <color name="ios_blue">#0A84FF</color>
+    <color name="ios_blue_grad_top">#33A0FF</color>
+    <color name="ios_blue_grad_bottom">#0A66FF</color>
+    <color name="bubble_gray">#E9E9EB</color>
+    <color name="ios_bg">#FFFFFF</color>
+    <color name="ios_nav">#F7F7F8</color>
+    <color name="ios_primary_text">#000000</color>
+    <color name="ios_secondary_text">#8E8E93</color>
+    <color name="ios_separator">#E5E5EA</color>
+    <color name="ios_field">#EFEFF0</color>
+
+    <!-- Adaptive icon -->
+    <color name="ic_launcher_background">#5E5CE6</color>
+</resources>

@@ -33,6 +33,7 @@
     <string name="attach_contact">Contact</string>
     <string name="sending_picture">Sending picture…</string>
     <string name="picture_send_failed">Couldn\'t send the picture.</string>
+    <string name="mms_failed">Picture didn\'t send (error %1$d)</string>
     <string name="picture_title">Picture</string>
     <string name="picture">Picture message</string>
     <string name="ok">OK</string>

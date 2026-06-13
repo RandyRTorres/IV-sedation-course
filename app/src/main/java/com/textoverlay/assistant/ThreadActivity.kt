@@ -1,6 +1,10 @@
 package com.textoverlay.assistant
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.database.ContentObserver
 import android.net.Uri
 import android.os.Bundle
@@ -18,6 +22,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -78,6 +83,18 @@ class ThreadActivity : AppCompatActivity() {
         override fun onChange(selfChange: Boolean) = reload()
     }
 
+    /** Reports the result of an MMS send so failures aren't silent. */
+    private val mmsSentReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (resultCode == android.app.Activity.RESULT_OK) {
+                toast(getString(R.string.sent))
+            } else {
+                toast(getString(R.string.mms_failed, resultCode))
+            }
+            reload()
+        }
+    }
+
     /** System contact picker (phone-number list). */
     private val pickContact = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -124,7 +141,7 @@ class ThreadActivity : AppCompatActivity() {
         resolveTarget()
 
         binding.sendButton.setOnClickListener { send() }
-        binding.summarizeButton.setOnClickListener { runClaude(fillReply = false) }
+        binding.summarizeButton.setOnClickListener { summarizeRecent() }
         binding.suggestButton.setOnClickListener { runClaude(fillReply = true) }
 
         // "To" field: name/number autocomplete + contact picker.
@@ -154,6 +171,15 @@ class ThreadActivity : AppCompatActivity() {
             split.first?.clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri?.let { setAttachment(it) }
             split.second
         }
+
+        ContextCompat.registerReceiver(
+            this, mmsSentReceiver, IntentFilter(ACTION_MMS_SENT), ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        runCatching { unregisterReceiver(mmsSentReceiver) }
     }
 
     private fun showAttachMenu() {
@@ -312,6 +338,46 @@ class ThreadActivity : AppCompatActivity() {
         }
     }
 
+    /** Summarize button: a short, at-a-glance summary of just the recent
+     *  messages (those since my last reply), shown in the header bar. */
+    private fun summarizeRecent() {
+        if (!SettingsStore(this).hasApiKey) {
+            toast(getString(R.string.no_api_key_short))
+            return
+        }
+        binding.summaryBar.visibility = View.VISIBLE
+        binding.summaryText.text = getString(R.string.summarizing)
+        binding.summaryBar.setOnClickListener { binding.summaryBar.visibility = View.GONE }
+        lifecycleScope.launch {
+            val msgs = if (threadId > 0) repo.loadMessages(threadId) else emptyList()
+            if (msgs.isEmpty()) {
+                binding.summaryBar.visibility = View.GONE
+                toast(getString(R.string.no_history))
+                return@launch
+            }
+            // Everything after my last sent message; fall back to the last few.
+            val lastMine = msgs.indexOfLast { !it.incoming }
+            val recent = if (lastMine in 0 until msgs.size - 1) {
+                msgs.subList(lastMine + 1, msgs.size)
+            } else {
+                msgs.takeLast(6)
+            }
+            val transcript = recent.joinToString("\n") {
+                (if (it.incoming) "Them: " else "Me: ") + it.body.ifBlank { "[picture]" }
+            }
+            val images = recent.filter { it.imageUri != null }
+                .takeLast(2)
+                .mapNotNull { m -> repo.loadImageForClaude(m.imageUri!!) }
+            val name = repo.displayName(currentAddress().orEmpty())
+            runCatching { claude.summarize(name, transcript, images) }
+                .onSuccess { binding.summaryText.text = it }
+                .onFailure {
+                    binding.summaryBar.visibility = View.GONE
+                    toast(it.message ?: "Couldn't reach Claude.")
+                }
+        }
+    }
+
     private fun currentAddress(): String? {
         val typed = binding.recipient.text?.toString()?.trim()
         return if (!typed.isNullOrBlank()) typed else address
@@ -352,7 +418,12 @@ class ThreadActivity : AppCompatActivity() {
                 return@launch
             }
             val (bytes, mime) = data
-            val ok = MmsSender.send(applicationContext, addr, body.ifBlank { null }, bytes, mime)
+            val sentIntent = PendingIntent.getBroadcast(
+                this@ThreadActivity, 0,
+                Intent(ACTION_MMS_SENT).setPackage(packageName),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val ok = MmsSender.send(applicationContext, addr, body.ifBlank { null }, bytes, mime, sentIntent)
             if (!ok) {
                 toast(getString(R.string.picture_send_failed))
                 return@launch
@@ -413,11 +484,12 @@ class ThreadActivity : AppCompatActivity() {
     private suspend fun buildTranscript(): String {
         if (threadId <= 0) return ""
         val msgs = repo.loadMessages(threadId)
-        return msgs.filter { it.body.isNotBlank() || it.imageUri != null }
-            .joinToString("\n") {
-                val who = if (it.incoming) "Them: " else "Me: "
-                who + it.body.ifBlank { "[sent a picture]" }
-            }
+            .filter { it.body.isNotBlank() || it.imageUri != null }
+            .takeLast(14) // recent context only — keeps replies fast and on-topic
+        return msgs.joinToString("\n") {
+            val who = if (it.incoming) "Them: " else "Me: "
+            who + it.body.ifBlank { "[sent a picture]" }
+        }
     }
 
     /** The most recent pictures in this thread, for Claude to look at. Broken
@@ -461,6 +533,7 @@ class ThreadActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_THREAD_ID = "thread_id"
         const val EXTRA_ADDRESS = "address"
+        private const val ACTION_MMS_SENT = "com.textoverlay.assistant.MMS_SENT"
 
         /** A compact set of common emoji for the in-app picker. */
         private val EMOJI = listOf(

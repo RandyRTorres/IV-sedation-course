@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1f6f54">
+<title>Skeet Score Tracker</title>
+<style>
+  :root {
+    --green: #1f6f54;
+    --green-dark: #14503c;
+    --bg: #f4f1ea;
+    --card: #ffffff;
+    --ink: #20251f;
+    --muted: #6b7268;
+    --line: #e2ddd1;
+    --hit: #2e9e6a;
+    --miss: #c34a3a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.4;
+  }
+  header {
+    background: var(--green);
+    color: #fff;
+    padding: 18px 16px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.15);
+  }
+  header h1 { margin: 0; font-size: 1.3rem; letter-spacing: .5px; }
+  header p { margin: 4px 0 0; font-size: .8rem; opacity: .85; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+
+  .shooters {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .shooter-tab {
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 6px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .shooter-tab.active {
+    border-color: var(--green);
+    background: var(--green);
+    color: #fff;
+  }
+  .shooter-tab .name { font-weight: 600; font-size: .95rem; }
+  .shooter-tab .avg { font-size: .72rem; opacity: .8; margin-top: 2px; }
+
+  .card {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 1rem;
+    color: var(--green-dark);
+  }
+
+  .round-entry { text-align: center; }
+  .big-score {
+    font-size: 3.2rem;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 1;
+  }
+  .big-score small { font-size: 1.2rem; color: var(--muted); font-weight: 400; }
+
+  .targets {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 7px;
+    margin: 16px 0;
+  }
+  .target {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    background: #fafafa;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .12s;
+    user-select: none;
+  }
+  .target.hit { background: var(--hit); border-color: var(--hit); color: #fff; }
+  .target.miss { background: var(--miss); border-color: var(--miss); color: #fff; }
+
+  .row { display: flex; gap: 8px; }
+  button {
+    font-family: inherit;
+    font-size: .95rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    cursor: pointer;
+    flex: 1;
+  }
+  .btn-save { background: var(--green); color: #fff; }
+  .btn-save:active { background: var(--green-dark); }
+  .btn-clear { background: #ece8de; color: var(--ink); }
+  .hint { font-size: .78rem; color: var(--muted); margin: 4px 0 12px; }
+
+  .history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .history-item:last-child { border-bottom: none; }
+  .history-item .date { font-size: .82rem; color: var(--muted); }
+  .history-item .score { font-weight: 700; font-size: 1.1rem; }
+  .history-item .score small { font-weight: 400; color: var(--muted); font-size: .8rem; }
+  .del { background: none; color: var(--miss); flex: 0; padding: 4px 8px; font-size: 1.1rem; }
+  .empty { color: var(--muted); font-size: .88rem; text-align: center; padding: 12px 0; }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+  .stat .num { font-size: 1.4rem; font-weight: 700; color: var(--green); }
+  .stat .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎯 Skeet Score Tracker</h1>
+  <p>25 targets &middot; 8 stations &middot; tap a clay to toggle hit/miss</p>
+</header>
+<main>
+  <div class="shooters" id="shooters"></div>
+
+  <div class="card">
+    <div class="round-entry">
+      <div class="big-score"><span id="curHits">0</span><small> / 25</small></div>
+      <div class="targets" id="targets"></div>
+      <div class="row">
+        <button class="btn-clear" onclick="resetRound()">Reset</button>
+        <button class="btn-save" onclick="saveRound()">Save Round</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Stats</h2>
+    <div class="stats">
+      <div class="stat"><div class="num" id="statRounds">0</div><div class="label">Rounds</div></div>
+      <div class="stat"><div class="num" id="statAvg">—</div><div class="label">Average</div></div>
+      <div class="stat"><div class="num" id="statBest">—</div><div class="label">Best</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>History</h2>
+    <div id="history"></div>
+  </div>
+</main>
+
+<script>
+const SHOOTERS = ["You", "Alex", "Dad"];
+const ROUND_SIZE = 25;
+const KEY = "skeetScores.v1";
+
+let data = load();
+let current = 0;                       // active shooter index
+let round = new Array(ROUND_SIZE).fill(false); // hit/miss for in-progress round
+
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY));
+    if (raw && Array.isArray(raw.history)) return raw;
+  } catch (e) {}
+  return { history: [] }; // each: {shooter, hits, date}
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
+
+function roundsFor(i) {
+  return data.history.filter(r => r.shooter === i);
+}
+
+function renderShooters() {
+  const el = document.getElementById("shooters");
+  el.innerHTML = "";
+  SHOOTERS.forEach((name, i) => {
+    const rounds = roundsFor(i);
+    const avg = rounds.length
+      ? (rounds.reduce((s, r) => s + r.hits, 0) / rounds.length).toFixed(1)
+      : "—";
+    const tab = document.createElement("div");
+    tab.className = "shooter-tab" + (i === current ? " active" : "");
+    tab.innerHTML = `<div class="name">${name}</div><div class="avg">avg ${avg}</div>`;
+    tab.onclick = () => { current = i; resetRound(); renderAll(); };
+    el.appendChild(tab);
+  });
+}
+
+function renderTargets() {
+  const el = document.getElementById("targets");
+  el.innerHTML = "";
+  round.forEach((hit, i) => {
+    const t = document.createElement("div");
+    t.className = "target" + (hit ? " hit" : "");
+    t.textContent = hit ? "✓" : (i + 1);
+    t.onclick = () => { round[i] = !round[i]; renderRound(); };
+    el.appendChild(t);
+  });
+}
+
+function renderRound() {
+  document.getElementById("curHits").textContent = round.filter(Boolean).length;
+  renderTargets();
+}
+
+function renderStats() {
+  const rounds = roundsFor(current);
+  const n = rounds.length;
+  document.getElementById("statRounds").textContent = n;
+  document.getElementById("statAvg").textContent =
+    n ? (rounds.reduce((s, r) => s + r.hits, 0) / n).toFixed(1) : "—";
+  document.getElementById("statBest").textContent =
+    n ? Math.max(...rounds.map(r => r.hits)) : "—";
+}
+
+function renderHistory() {
+  const el = document.getElementById("history");
+  const rounds = data.history
+    .map((r, idx) => ({ r, idx }))
+    .filter(x => x.r.shooter === current)
+    .reverse();
+  if (!rounds.length) {
+    el.innerHTML = '<div class="empty">No rounds saved yet.</div>';
+    return;
+  }
+  el.innerHTML = "";
+  rounds.forEach(({ r, idx }) => {
+    const item = document.createElement("div");
+    item.className = "history-item";
+    item.innerHTML =
+      `<div class="date">${r.date}</div>` +
+      `<div class="score">${r.hits}<small> / ${ROUND_SIZE}</small></div>`;
+    const del = document.createElement("button");
+    del.className = "del";
+    del.textContent = "✕";
+    del.title = "Delete round";
+    del.onclick = () => { data.history.splice(idx, 1); save(); renderAll(); };
+    item.appendChild(del);
+    el.appendChild(item);
+  });
+}
+
+function renderAll() {
+  renderShooters();
+  renderRound();
+  renderStats();
+  renderHistory();
+}
+
+function resetRound() {
+  round = new Array(ROUND_SIZE).fill(false);
+  renderRound();
+}
+
+function saveRound() {
+  const hits = round.filter(Boolean).length;
+  const date = new Date().toLocaleDateString(undefined,
+    { month: "short", day: "numeric", year: "numeric" });
+  data.history.push({ shooter: current, hits, date });
+  save();
+  resetRound();
+  renderAll();
+}
+
+renderAll();
+</script>
+</body>
+</html>
